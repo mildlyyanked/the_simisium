@@ -40,10 +40,10 @@ export function buildLLM(onUsage?: (u: LLMUsage) => void): { llm?: LLMService; w
   }
 }
 
-export function buildPlaces(): { places?: PlacesProvider; warning?: string } {
+export function buildPlaces(center?: { lat: number; lng: number }): { places?: PlacesProvider; warning?: string } {
   const s = useSettings.getState();
   try {
-    return { places: createPlacesProvider({ googleApiKey: s.googlePlacesKey || undefined }) };
+    return { places: createPlacesProvider({ googleApiKey: s.googlePlacesKey || undefined, ...(center ? { mockCenter: center } : {}) }) };
   } catch (err) {
     return { warning: `Places layer unavailable: ${(err as Error).message}` };
   }

@@ -515,6 +515,7 @@ function endJob(ctx: SystemContext, sim: Sim, reason: string, eligibleForUnemplo
     sim.career.unemployment = { weeklyBenefit: benefit, weeksLeft: CAREER_CONFIG.unemploymentWeeks, lastPaidAt: now };
     sim.finance.benefits.unemployment = true;
     sim.flags.career_ui_eligible = true;
+    sim.flags.career_ui_weekly = benefit;
     ctx.emit({ type: 'custom', kind: 'career:unemployment_started', simId: sim.id, payload: { weeklyBenefit: benefit } });
     ctx.log({ text: `${name(ctx, sim)} ${verb(ctx, sim, 'qualify', 'qualifies')} for unemployment: ${formatMoney(benefit)}/week for up to ${CAREER_CONFIG.unemploymentWeeks} weeks.`, kind: 'money', simId: sim.id, importance: 2 });
   } else {

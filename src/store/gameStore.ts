@@ -158,7 +158,7 @@ export const useGame = create<GameState>((set, get) => ({
     };
     set({ genProgress: { message: 'Preparing the world…', fraction: 0 } });
     try {
-      const placesRes = buildPlaces();
+      const placesRes = buildPlaces(input.region?.center);
       if (placesRes.warning) get().pushToast(placesRes.warning, 'warning');
       if (!placesRes.places) throw new Error('Places provider unavailable');
       const llmRes = buildLLM(onUsage);

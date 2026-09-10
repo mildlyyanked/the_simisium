@@ -209,6 +209,7 @@ function ensureHome(ctx: Ctx, hh: Household): void {
   if (home.archetype === 'shelter' && home.residence) home.residence.tenure = 'shelter';
   if (!home.residence) return;
   if (!home.rooms.length) ensureRooms(home, home.residence.bedrooms, home.residence.bathrooms);
+  if (!home.objectIds.length && home.residence.tenure !== 'shelter') ensureEssentials(ctx, home, hh);
   home.discovered = true;
   if (!home.ownerHouseholdId && home.residence.tenure !== 'shelter') home.ownerHouseholdId = hh.id;
   ensureChores(hh, home.residence);
