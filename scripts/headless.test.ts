@@ -73,7 +73,7 @@ describe.skipIf(!DAYS)('headless simulation', () => {
     for (const l of important) lines.push(`  [${formatDateTime(state.epoch, l.at)}] ${l.text}`);
     const nan = JSON.stringify(state).includes('null') ? '' : '';
     lines.push(nan);
-    console.log(lines.join('\n'));
+    process.stdout.write(lines.join('\n') + '\n');
     // sanity
     const json = JSON.stringify(state);
     if (json.includes('NaN')) throw new Error('NaN found in state');
