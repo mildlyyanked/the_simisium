@@ -11,6 +11,18 @@ Underneath is a full simulation: needs, health and illness, money (accounts, cre
 
 You can play a single character or a whole household, switching between members while the others run on autonomy.
 
+## Screenshots
+
+Web build of the app at phone size (offline fallback, Austin fixtures):
+
+| Title | Character | Live | Actions |
+|---|---|---|---|
+| ![Title](docs/screenshots/title.png) | ![Character](docs/screenshots/new-game-member.png) | ![Live](docs/screenshots/live.png) | ![Actions](docs/screenshots/actions.png) |
+
+| Map | Phone | Sims | Journal |
+|---|---|---|---|
+| ![Map](docs/screenshots/map.png) | ![Phone](docs/screenshots/phone.png) | ![Sims](docs/screenshots/sims.png) | ![Journal](docs/screenshots/journal.png) |
+
 ## Stack
 
 - **Expo SDK 57 / React Native 0.86 / TypeScript**, Expo Router, Reanimated 4, react-native-svg, Zustand.

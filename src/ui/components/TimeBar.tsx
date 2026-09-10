@@ -31,7 +31,7 @@ export function TimeBar({ clock, weather, onWait, onWaitUntilMorning, onSkipToNe
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: t.colors.backgroundElevated, borderTopWidth: 1, borderTopColor: t.colors.border }}>
       <View style={{ flex: 1, minWidth: 0 }}>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-          <Text variant="heading" numberOfLines={1} style={{ fontVariant: ["tabular-nums"] }}>
+          <Text variant="heading" numberOfLines={1} style={{ fontVariant: ['tabular-nums'], flexShrink: 0 }}>
             {clock.timeLabel}
           </Text>
           <Text variant="caption" muted numberOfLines={1} style={{ flexShrink: 1 }}>
