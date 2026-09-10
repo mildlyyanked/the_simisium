@@ -951,7 +951,7 @@ export const propertySystem: System = {
             v.residence.leaseEndsMinute = ctx.state.time.minute + 180 * DAY;
             syncHousingBills(ctx, hh);
           }
-          ctx.log({ text: `${v.name} sold for ${formatMoney(value, { cents: false })}. After paying off ${formatMoney(payoff, { cents: false })} and ${formatMoney(commission, { cents: false })} in commission you net ${formatMoney(proceeds)}.${hh.homeVenueId === v.id ? ` You're renting it back at ${formatMoney(v.residence.monthlyRent)}/month until you move.` : ''}`, kind: 'money', simId: sim.id, importance: 3 });
+          ctx.log({ text: `${v.name} sold for ${formatMoney(value, { cents: false })}. After paying off ${formatMoney(payoff, { cents: false })} and ${formatMoney(commission, { cents: false })} in commission you net ${formatMoney(proceeds)}.${hh.homeVenueId === v.id ? ` You're renting it back at ${formatMoney(v.residence.monthlyRent ?? 0)}/month until you move.` : ''}`, kind: 'money', simId: sim.id, importance: 3 });
         }
         break;
       }

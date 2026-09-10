@@ -262,7 +262,7 @@ function actions(ctx: SystemContext, simId: SimId): ActionDef[] {
   out.push(def('phone:social:post', `Post on ${p.platform} (${p.followers} followers)`, 10, { group: 'Phone: apps', effects: { needs: { fun: 6 } }, icon: 'camera' }));
   out.push(def('phone:social:scroll', `Scroll ${p.platform}`, 15, { group: 'Phone: apps', autonomyWeight: 0.35, satisfies: ['fun'], effects: { needs: { fun: 10 } } }));
   out.push(def('phone:news:read', 'Check the news', 10, { group: 'Phone: apps', effects: { needs: { fun: 3 } } }));
-  if (isAdult(sim) && isSingle(sim)) out.push(def('phone:dating:browse', 'Browse the dating app', 15, { group: 'Phone: apps', category: 'romance', requirements: hasTrait(sim, 'commitment_issues') && ctx.rng.next() < 0 ? [] : [], icon: 'heart' }));
+  if (isAdult(sim) && isSingle(sim)) out.push(def('phone:dating:browse', 'Browse the dating app', 15, { group: 'Phone: apps', category: 'romance', icon: 'heart' }));
   const hh = ctx.query.householdOf(simId);
   const friends = Object.values(sim.relationships).filter((r) => r.friendship >= 20 && sim.phone.contacts.includes(r.simId) && !ctx.query.isControlled(r.simId));
   if (hh && friends.length && !sim.flags.party_planned) out.push(def('phone:party:invite', `Invite friends over (${friends.length} friends)`, 10, { group: 'Phone: apps', category: 'social', requirements: [...service, { kind: 'money', reason: 'Snacks & drinks cost $40', params: { amount: 40 } }], cost: { amount: 40, memo: 'Party snacks & drinks', category: 'entertainment' } }));
@@ -337,7 +337,7 @@ function execute(ctx: SystemContext, simId: SimId, action: ActionDef, params: Re
       if (!target) return { ok: false };
       const rel = target.relationships[simId];
       const p = 0.5 + (rel?.attraction ?? 0) / 200 + (compatibility(sim, target) - 0.5) * 0.4;
-      if (!ctx.rng.chance(clamp(p, 0.1, 0.9))) return { ok: true, text: `${first(target)} says maybe another time.`, effects: { moodlets: [{ emotion: 'sad', label: 'Turned down', -3 > 0 ? 0 : -3 as never, durationMinutes: 120 } as never] } };
+      if (!ctx.rng.chance(clamp(p, 0.1, 0.9))) return { ok: true, text: `${first(target)} says maybe another time.`, effects: { moodlets: [{ emotion: 'sad', label: 'Turned down', intensity: -3, durationMinutes: 120 }] } };
       const venueId = (params.venueId as VenueId | undefined) ?? ctx.query.nearestVenue(sim.location.venueId, 'restaurant')?.id;
       const daysAhead = ctx.clock.minuteOfDay < 15 * HOUR ? 1 : 2;
       const at = now - ctx.clock.minuteOfDay + daysAhead * DAY + 19 * HOUR;

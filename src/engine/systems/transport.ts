@@ -734,7 +734,8 @@ export const transportSystem: System = {
         const p = event.payload ?? {};
         if (event.kind === 'transport:refuel' && sim) {
           const here = sim.location.venueId;
-          const v = (p.vehicleId && ctx.state.vehicles[String(p.vehicleId) as VehicleId]) || vehiclesAt(ctx.state, sim, here).find((x) => x.fuelType !== 'none' && x.fuelType !== 'electric');
+          const explicit = typeof p.vehicleId === 'string' ? ctx.state.vehicles[p.vehicleId as VehicleId] : undefined;
+          const v: Vehicle | undefined = explicit ?? vehiclesAt(ctx.state, sim, here).find((x) => x.fuelType !== 'none' && x.fuelType !== 'electric');
           if (!v) break;
           const gallons = round2(((100 - v.fuel) / 100) * v.tankGallons);
           const cost = round2(gallons * ctx.state.economy.gasPrice);
