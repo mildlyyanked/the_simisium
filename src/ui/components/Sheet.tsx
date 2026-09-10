@@ -45,7 +45,7 @@ export function Sheet({ visible, onClose, title, subtitle, children, maxHeight =
   }, [visible]);
 
   const backdrop = useAnimatedStyle(() => ({ opacity: progress.value * 0.6 }));
-  const panel = useAnimatedStyle(() => ({ transform: [{ translateY: (1 - progress.value) * 60 }], opacity: progress.value }));
+  const panel = useAnimatedStyle(() => ({ transform: [{ translateY: (1 - progress.value) * 80 }] }));
 
   if (!mounted) return null;
   const wide = width > 700;

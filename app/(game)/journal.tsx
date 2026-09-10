@@ -79,7 +79,7 @@ export default function JournalScreen(): React.ReactElement {
         </View>
         <Card>
           <StatRow>
-            <Stat label="Days" value={st.daysPlayed} icon="calendar" size="sm" />
+            <Stat label="Day" value={days} icon="calendar" size="sm" />
             <Stat label="Met" value={st.simsMet} icon="account-multiple" size="sm" />
             <Stat label="Places" value={st.placesVisited} icon="map-marker" size="sm" />
             <Stat label="Talks" value={st.conversations} icon="chat" size="sm" />

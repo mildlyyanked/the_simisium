@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "sim": "SIM_DAYS=${SIM_DAYS:-7} vitest run scripts/headless.test.ts --reporter=basic",
+    "sim": "SIM_DAYS=${SIM_DAYS:-7} vitest run scripts/headless.test.ts",
     "shots": "node scripts/screenshot.mjs"
   },
   "dependencies": {
@@ -50,6 +50,7 @@
   "devDependencies": {
     "@types/node": "^22.20.2",
     "@types/react": "~19.2.2",
+    "babel-preset-expo": "^57.0.11",
     "typescript": "~6.0.3",
     "vitest": "^4.1.11"
   }

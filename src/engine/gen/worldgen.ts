@@ -21,6 +21,8 @@ import { SEARCH_PLAN } from '../places/archetypeSearch';
 import type { PlacesProvider } from '../places/types';
 import { annualIncomeOf, generateFamilyFor, generateNpc, generatePlayerSim, link, makeJobFor, type GenCtx, type PlayerSimSpec } from './simgen';
 
+const BUILDING_NAMES = ['The Meridian', 'Oak Hollow Apartments', 'Riverbend Lofts', 'Parkside Commons', 'The Wexford', 'Cedar Court', 'Maple Terrace', 'The Landon', 'Sunset Ridge Apartments', 'Brookstone Flats'];
+
 export interface NewGameOptions {
   seed: string;
   epoch: string;
@@ -89,7 +91,7 @@ function hireStaff(ctx: GenCtx, venue: Venue, cap: number): Sim[] {
 }
 
 function makeResidence(kind: Residence['kind'], tenure: Residence['tenure'], region: Region, rng: RNG, bedrooms: number): Residence {
-  const rent = round2(region.medianRent1br * (bedrooms === 0 ? 0.6 : bedrooms === 1 ? rng.range(0.95, 1.2) : bedrooms === 2 ? rng.range(1.25, 1.55) : rng.range(1.6, 2.1)));
+  const rent = Math.round(region.medianRent1br * (bedrooms === 0 ? 0.6 : bedrooms === 1 ? rng.range(0.95, 1.2) : bedrooms === 2 ? rng.range(1.25, 1.55) : rng.range(1.6, 2.1)) / 5) * 5;
   const value = Math.round(region.medianHomePrice * (bedrooms <= 1 ? 0.55 : bedrooms === 2 ? 0.8 : 1.05) / 1000) * 1000;
   return {
     kind,
@@ -199,7 +201,7 @@ export async function generateWorld(opts: NewGameOptions): Promise<WorldState> {
   for (const arch of ['grocery', 'cafe', 'restaurant', 'park', 'hospital', 'police', 'courthouse', 'dmv', 'school', 'bank', 'gym', 'pharmacy', 'bar', 'library', 'transit_stop', 'gas_station', 'jail', 'apartment_building'] as VenueArchetype[]) {
     if (byArch.get(arch)?.length) continue;
     const def = content.archetypes[arch];
-    const v = makeVenue({ id: newVenueId(rng), name: `${opts.region.name} ${def?.name ?? arch}`, archetype: arch, location: jitter(rng, center, 4), rng, priceMultiplier: opts.region.costOfLiving, rooms: def?.rooms ?? ['Main floor'], tags: ['generated'] });
+    const v = makeVenue({ id: newVenueId(rng), name: arch === 'apartment_building' ? rng.pick(BUILDING_NAMES) : `${opts.region.name} ${def?.name ?? arch}`, archetype: arch, location: jitter(rng, center, 4), rng, priceMultiplier: opts.region.costOfLiving, rooms: def?.rooms ?? ['Main floor'], tags: ['generated'] });
     state.venues[v.id] = v;
     byArch.set(arch, [v]);
   }
@@ -225,7 +227,7 @@ export async function generateWorld(opts: NewGameOptions): Promise<WorldState> {
   const buildings = byArch.get('apartment_building') ?? [];
   if (!buildings.length) {
     for (let b = 0; b < 3; b++) {
-      const v = makeVenue({ id: newVenueId(rng), name: rng.pick(['The Meridian', 'Oak Hollow Apartments', 'Riverbend Lofts', 'Parkside Commons', 'The Wexford', 'Cedar Court']), archetype: 'apartment_building', location: jitter(rng, center, 2.5), rng, rooms: content.archetypes.apartment_building?.rooms ?? ['Lobby'], tags: ['generated'] });
+      const v = makeVenue({ id: newVenueId(rng), name: rng.pick(BUILDING_NAMES), archetype: 'apartment_building', location: jitter(rng, center, 2.5), rng, rooms: content.archetypes.apartment_building?.rooms ?? ['Lobby'], tags: ['generated'] });
       state.venues[v.id] = v;
       furnish(state, content, rng, v);
       buildings.push(v);
@@ -251,7 +253,8 @@ export async function generateWorld(opts: NewGameOptions): Promise<WorldState> {
     const b = r < 8 ? nearestBuilding : rng.pick(buildings);
     const employed = rng.chance(0.78);
     const career = employed && residentCareers.length ? rng.pick(residentCareers) : undefined;
-    const employer = career ? rng.pick((venues.filter((v) => career.venues.includes(v.archetype)) as Venue[]).concat([undefined as unknown as Venue]).filter(Boolean)) : undefined;
+    const employerPool = career ? venues.filter((v) => career.venues.includes(v.archetype)) : [];
+    const employer = employerPool.length ? rng.pick(employerPool) : undefined;
     const npc = generateNpc(ctx, { venueId: b.id, homeVenueId: b.id, careerId: career?.id, employerVenueId: employer?.id, ageRange: [19, 74], lod: r < 8 ? 'near' : 'far' });
     state.sims[npc.id] = npc;
     b.regularSimIds.push(npc.id);
@@ -442,7 +445,7 @@ export async function generateWorld(opts: NewGameOptions): Promise<WorldState> {
   const intro = [
     `${opts.region.name}, ${opts.region.state}. ${opts.region.culture}`,
     `${hh.residence === 'room' ? 'A rented room' : hh.residence === 'house' ? 'A house' : hh.residence === 'family_home' ? 'The family home' : 'An apartment'} — ${home.name}. ${home.residence.tenure === 'rent' ? `Rent is $${home.residence.monthlyRent?.toLocaleString()} a month, due on the 1st.` : home.residence.tenure === 'own' ? 'The mortgage is yours now.' : 'No rent, and no privacy.'}`,
-    `${hour < 12 ? 'Morning' : 'Afternoon'}. ${w.condition.replace(/_/g, ' ')}, ${Math.round(w.tempF)}°F. ${members.length > 1 ? `${members.map((m) => m.identity.firstName).join(', ')} are home.` : `${head.identity.firstName} is home.`} ${head.career.job ? `Work at ${head.career.job.employerName} as a ${head.career.job.title.toLowerCase()}.` : 'No job yet.'} $${hh.startingCash.toLocaleString()} to your name.`,
+    `${hour < 12 ? 'Morning' : 'Afternoon'}. ${w.condition.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())}, ${Math.round(w.tempF)}°F. ${members.length > 1 ? `${members.map((m) => m.identity.firstName).join(', ')} are home.` : `${head.identity.firstName} is home.`} ${head.career.job ? `Work at ${head.career.job.employerName} as a ${head.career.job.title.toLowerCase()}.` : 'No job yet.'} $${hh.startingCash.toLocaleString()} to your name.`,
   ];
   intro.forEach((t, k) => state.log.push({ id: shortId(rng, 'log'), at: state.time.minute, text: t, kind: 'narrative', simId: head.id, venueId: home.id, importance: k === 2 ? 2 : 1 }));
   state.stats.placesVisited = 1;

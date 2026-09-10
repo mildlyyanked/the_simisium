@@ -1,5 +1,4 @@
 import { it, expect } from 'vitest';
-import { writeFileSync, readFileSync } from 'node:fs';
 import { ARCHETYPES, ARCHETYPE_IDS } from '../src/engine/content/archetypes';
 import { OBJECTS } from '../src/engine/content/objects';
 import { CAREERS } from '../src/engine/content/careers';
@@ -13,7 +12,6 @@ it('archetypes complete', () => {
     acts += a.actions.length;
     if (!a.googleTypes.length && id !== 'home' && id !== 'unknown') noTypes.push(id);
   }
-  writeFileSync('scratch/arch.txt', `archetypes=${ARCHETYPE_IDS.length} objectSlots=${objs} staffSlots=${staff} venueActions=${acts}\nbadObjects=${[...badObj].join(',')}\nbadCareers=${[...badCareer].join(',')}\nnoGoogleTypes=${noTypes.join(',')}\n`);
   expect(badObj.size).toBe(0);
   expect(badCareer.size).toBe(0);
 });

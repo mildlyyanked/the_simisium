@@ -9,6 +9,8 @@ import { Screen, Text, Button, Card, Tabs, KeyValue, SimAvatar, Chip, ChipRow, S
 import { NEED_META, useTheme } from '@/ui/theme';
 import { clockShort, dayLabelShort, money } from '@/ui/format';
 
+const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
 type Tab = 'household' | 'people' | 'pets' | 'vehicles';
 const BIO_LABEL: Record<BioCategory, string> = { origin: 'Origins', family: 'Family', childhood: 'Childhood', education: 'Education', career: 'Work', romance: 'Romance', health: 'Health', money: 'Money', hobby: 'Hobbies', belief: 'Beliefs', secret: 'Secrets', fear: 'Fears', dream: 'Dreams', habit: 'Habits', quirk: 'Quirks', relationship: 'Relationships', trauma: 'Hard times', achievement: 'Achievements', daily_life: 'Daily life', opinion: 'Opinions' };
 
@@ -44,7 +46,7 @@ function CharacterSheet({ sim }: { sim: Sim }): React.ReactElement {
         <Button title={sim.flags.autonomy ? 'Autonomy on' : 'Autonomy off'} icon={sim.flags.autonomy ? 'robot' : 'robot-off-outline'} size="sm" variant={sim.flags.autonomy ? 'secondary' : 'outline'} onPress={() => toggleAutonomy(sim.id)} />
       </View>
       <Text variant="prose" muted>
-        {sim.identity.appearance.hair} hair, {sim.identity.appearance.eyes} eyes, {sim.identity.appearance.build} build. Usually in {sim.identity.appearance.style}. {sim.identity.appearance.distinguishing.join(', ')}.
+        Hair {sim.identity.appearance.hair} · {cap(sim.identity.appearance.eyes)} eyes · {cap(sim.identity.appearance.build)} build. Usually in {sim.identity.appearance.style}. {cap(sim.identity.appearance.distinguishing.join(', '))}.
       </Text>
       <ChipRow>
         {sim.personality.traits.map((tr) => (

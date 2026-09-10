@@ -216,6 +216,7 @@ export function decayRates(ctx: SystemContext, sim: Sim): Record<NeedId, number>
   if (sleeping) {
     rates.hunger *= 0.4;
     rates.thirst *= 0.5;
+    rates.bladder *= 0.45;
     rates.energy = 0;
     rates.hygiene *= 0.5;
     rates.social = 0;
@@ -295,6 +296,13 @@ function checkThresholds(ctx: SystemContext, sim: Sim, dt: number): boolean {
   if (!sim.flags.smelly) delete sim.flags.smelly;
 
   // --- failure states ---------------------------------------------------
+  // a full bladder wakes you before it becomes an accident
+  if (sim.needs.bladder <= 8 && isSleeping(sim) && sim.currentAction && sim.currentAction.actionId !== 'needs:passed_out' && sim.needs.energy >= 35) {
+    ctx.emit({ type: 'action:interrupted', simId: sim.id, actionId: sim.currentAction.actionId, reason: 'woke up needing the bathroom' });
+    sim.currentAction = undefined;
+    delete sim.flags.sleeping;
+    ctx.log({ text: controlled ? 'You wake up needing the bathroom, badly.' : `${name(sim)} woke up needing the bathroom.`, kind: 'need', simId: sim.id, venueId: sim.location.venueId, importance: controlled ? 1 : 0 });
+  }
   // bladder: accident
   if (sim.needs.bladder <= 0) {
     sim.needs.bladder = 100;
