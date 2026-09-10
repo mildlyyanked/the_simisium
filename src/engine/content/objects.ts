@@ -2426,3 +2426,594 @@ add(
     ],
   }),
 );
+
+// =====================================================================================
+// PUBLIC / CIVIC / OUTDOOR — the remaining fixtures of everyday American life
+// =====================================================================================
+add(
+  def({
+    id: 'park_bench', name: 'Park bench', category: 'outdoor', icon: '🪑', basePrice: 900, description: 'A slatted bench with a small memorial plaque on the backrest.',
+    rooms: ['grounds'], tags: ['park', 'seating', 'public'], durabilityUses: 200000, ambient: { comfort: 1 },
+    interactions: [
+      act({ id: 'sit', label: 'Sit for a while', category: 'needs', icon: '🪑', durationMinutes: 20, effects: { perMinute: { comfort: 0.5, energy: 0.12, fun: 0.1 }, stress: -6 }, satisfies: ['comfort'], autonomyWeight: 0.8, requiresState: { unoccupied: true }, setsState: { occupied: true }, group: 'Rest' }),
+      act({ id: 'people_watch', label: 'People-watch', category: 'entertainment', icon: '👀', durationMinutes: 25, effects: { perMinute: { fun: 0.28, comfort: 0.3 }, stress: -8, moodlets: [mood('relaxed', 'Watching the world go by', 4, 180)] }, satisfies: ['fun'], autonomyWeight: 0.6, llm: 'narrate', group: 'Rest' }),
+      act({ id: 'read_here', label: 'Read on the bench', category: 'hobby', icon: '📖', durationMinutes: 40, effects: { perMinute: { fun: 0.22, comfort: 0.25 }, skills: { logic: 8 }, stress: -10 }, requirements: [itemReq('book_novel')], autonomyWeight: 0.4, group: 'Hobby' }),
+      act({ id: 'eat_here', label: 'Eat your lunch here', category: 'needs', icon: '🥪', durationMinutes: 20, effects: { needs: { hunger: 34, comfort: 8, fun: 6 }, items: [{ op: 'lose', itemId: 'sandwich', qty: 1 }], custom: [cx('needs:ate', { calories: 480, healthy: 0.2, hungerRestored: 34 })] }, requirements: [itemReq('sandwich')], satisfies: ['hunger'], autonomyWeight: 0.5, group: 'Meal' }),
+    ],
+  }),
+  def({
+    id: 'picnic_table', name: 'Picnic table', category: 'outdoor', icon: '🧺', basePrice: 1100, description: 'Weathered pine, carved initials, one wobbly leg.',
+    rooms: ['grounds'], tags: ['park', 'seating', 'public'], durabilityUses: 200000, ambient: { comfort: 1, fun: 1 },
+    interactions: [
+      act({ id: 'picnic', label: 'Have a picnic', category: 'needs', icon: '🧺', durationMinutes: 50, effects: { needs: { hunger: 40, fun: 22, social: 16, comfort: 10 }, items: [{ op: 'lose', itemId: 'sandwich', qty: 1 }], stress: -12, moodlets: [mood('happy', 'Picnic in the park', 7, 360)], custom: [cx('needs:ate', { calories: 560, healthy: 0.3, hungerRestored: 40 })] }, requirements: [itemReq('sandwich')], satisfies: ['hunger', 'fun'], autonomyWeight: 0.6, llm: 'narrate', group: 'Meal' }),
+      act({ id: 'board_game_here', label: 'Play cards at the table', category: 'entertainment', icon: '🃏', durationMinutes: 40, effects: { perMinute: { fun: 0.35, social: 0.25 }, skills: { logic: 10 } }, satisfies: ['fun', 'social'], autonomyWeight: 0.4, group: 'Play' }),
+      act({ id: 'study_outside', label: 'Spread out your work here', category: 'school', icon: '📚', durationMinutes: 60, effects: { perMinute: { comfort: 0.1 }, skills: { logic: 22 }, needs: { energy: -8 }, custom: [cx('education:study', { minutes: 60 })] }, autonomyWeight: 0.3, group: 'Study' }),
+    ],
+  }),
+  def({
+    id: 'playground_set', name: 'Playground', category: 'outdoor', icon: '🛝', basePrice: 28000, description: 'Bright plastic towers, a curly slide, wood chips that get in everyone\'s shoes.',
+    rooms: ['grounds'], tags: ['park', 'kids', 'public'], durabilityUses: 500000, ambient: { fun: 3, noise: 12 },
+    interactions: [
+      act({ id: 'play', label: 'Play on the playground', category: 'entertainment', icon: '🛝', durationMinutes: 35, effects: { perMinute: { fun: 0.7, energy: -0.22, hygiene: -0.2 }, fitness: 0.2, moodlets: [mood('playful', 'Playground', 8, 240)] }, satisfies: ['fun'], autonomyWeight: 2.5, group: 'Play' }),
+      act({ id: 'push_swing', label: 'Push your kid on the swing', category: 'family', icon: '🧒', durationMinutes: 25, effects: { needs: { fun: 16, social: 18 }, skills: { parenting: 14 }, custom: [cx('family:play_with_child', {})], moodlets: [mood('grateful', 'Playground afternoon', 7, 480)] }, minStage: TEEN, autonomyWeight: 0.6, llm: 'narrate', group: 'Family' }),
+      act({ id: 'watch_kids', label: 'Watch from the edge', category: 'family', icon: '👀', durationMinutes: 30, effects: { perMinute: { comfort: 0.15, social: 0.15 }, stress: -4 }, minStage: TEEN, autonomyWeight: 0.3, group: 'Family' }),
+    ],
+  }),
+  def({
+    id: 'swing_set', name: 'Swing set', category: 'outdoor', icon: '🎠', basePrice: 4200, description: 'Four rubber slings on chains, one always twisted around the top bar.',
+    rooms: ['grounds'], tags: ['park', 'kids', 'public'], durabilityUses: 300000, ambient: { fun: 2 },
+    interactions: [
+      act({ id: 'swing', label: 'Swing', category: 'entertainment', icon: '🎠', durationMinutes: 20, effects: { perMinute: { fun: 0.6, comfort: 0.2 }, stress: -10, moodlets: [mood('playful', 'Kicking your legs out', 6, 180)] }, satisfies: ['fun'], autonomyWeight: 1.4, requiresState: { unoccupied: true }, setsState: { occupied: true }, group: 'Play' }),
+      act({ id: 'swing_talk', label: 'Sit on the swings and talk', category: 'social', icon: '💬', durationMinutes: 30, effects: { perMinute: { social: 0.4, fun: 0.25 }, stress: -8 }, satisfies: ['social'], minStage: TEEN, autonomyWeight: 0.5, llm: 'narrate', group: 'Social' }),
+    ],
+  }),
+  def({
+    id: 'walking_trail', name: 'Walking path', category: 'outdoor', icon: '🚶', basePrice: 0, description: 'A paved loop with distance markers painted on the asphalt.',
+    rooms: ['grounds'], tags: ['park', 'fitness', 'public'], durabilityUses: 1000000, ambient: { comfort: 1 },
+    interactions: [
+      act({ id: 'stroll', label: 'Take a stroll', category: 'fitness', icon: '🚶', durationMinutes: 30, effects: { perMinute: { fun: 0.22, comfort: 0.15, energy: -0.08, hygiene: -0.08 }, fitness: 0.3, skills: { athletics: 8 }, stress: -14, custom: [cx('health:workout', { minutes: 30, kind: 'walk' })], moodlets: [mood('relaxed', 'Fresh air', 6, 240)] }, satisfies: ['fun'], autonomyWeight: 1.2, group: 'Exercise' }),
+      act({ id: 'jog', label: 'Go for a jog', category: 'fitness', icon: '🏃', durationMinutes: 40, effects: { perMinute: { energy: -0.4, hygiene: -0.55, fun: 0.2 }, fitness: 1.3, weight: -0.12, skills: { athletics: 26, fitness: 18 }, stress: -18, custom: [cx('health:workout', { minutes: 40, kind: 'run' })], moodlets: [mood('energized', 'Runner\'s high', 9, 300)] }, autonomyWeight: 0.9, group: 'Exercise' }),
+      act({ id: 'walk_dog_here', label: 'Walk the dog on the loop', category: 'pet', icon: '🐕', durationMinutes: 35, effects: { perMinute: { fun: 0.25, comfort: 0.1, energy: -0.1 }, fitness: 0.4, stress: -12, custom: [cx('pet:walk', { minutes: 35 })] }, autonomyWeight: 0.7, group: 'Pet' }),
+      act({ id: 'push_stroller', label: 'Push the stroller around the loop', category: 'family', icon: '👶', durationMinutes: 40, effects: { perMinute: { comfort: 0.12, social: 0.1 }, fitness: 0.2, stress: -10, skills: { parenting: 10 }, custom: [cx('family:play_with_child', {})] }, minStage: TEEN, autonomyWeight: 0.3, group: 'Family' }),
+    ],
+  }),
+  def({
+    id: 'hiking_trail', name: 'Trailhead', category: 'outdoor', icon: '🥾', basePrice: 0, description: 'A dirt path into the greenbelt, with a laminated map bolted to a post.',
+    rooms: ['grounds'], tags: ['trail', 'fitness', 'nature', 'public'], durabilityUses: 1000000, ambient: { comfort: 2, fun: 2 },
+    interactions: [
+      act({ id: 'hike', label: 'Hike the trail', category: 'fitness', icon: '🥾', durationMinutes: 90, effects: { perMinute: { energy: -0.28, hygiene: -0.35, fun: 0.35, comfort: -0.05 }, fitness: 1.8, weight: -0.2, skills: { athletics: 40 }, stress: -30, custom: [cx('health:workout', { minutes: 90, kind: 'hike' })], moodlets: [mood('inspired', 'Out in the trees', 12, 720)] }, outcomes: { outcomes: [{ weight: 12, label: 'A perfect afternoon', effects: { needs: { fun: 10 } } }, { weight: 3, label: 'Saw a deer on the path', effects: { moodlets: [mood('happy', 'Saw a deer', 8, 480)] } }, { weight: 2, label: 'Rolled an ankle', effects: { custom: [cx('health:injury', { name: 'Rolled ankle', bodyPart: 'ankle', severity: 22, days: 5 })] } }, { weight: 2, label: 'Got a little lost', effects: { needs: { energy: -12 }, stress: 10, timeElapsedMinutes: 30 } }] }, satisfies: ['fun'], autonomyWeight: 0.5, llm: 'narrate', group: 'Exercise' }),
+      act({ id: 'trail_run', label: 'Trail run', category: 'fitness', icon: '🏃', durationMinutes: 55, effects: { perMinute: { energy: -0.5, hygiene: -0.6, fun: 0.25 }, fitness: 1.9, weight: -0.2, skills: { athletics: 38, fitness: 20 }, stress: -20, custom: [cx('health:workout', { minutes: 55, kind: 'run' })] }, requirements: [skillReq('athletics', 3)], autonomyWeight: 0.3, group: 'Exercise' }),
+      act({ id: 'birdwatch', label: 'Watch for birds', category: 'hobby', icon: '🐦', durationMinutes: 45, effects: { perMinute: { fun: 0.3, comfort: 0.2 }, skills: { research: 12 }, stress: -18, moodlets: [mood('relaxed', 'Quiet in the greenbelt', 7, 360)] }, autonomyWeight: 0.3, llm: 'narrate', group: 'Hobby' }),
+    ],
+  }),
+  def({
+    id: 'campfire', name: 'Fire ring', category: 'outdoor', icon: '🔥', basePrice: 300, description: 'A blackened steel ring on a concrete pad, ringed with camp chairs.',
+    rooms: ['grounds'], tags: ['park', 'social', 'public'], durabilityUses: 100000, ambient: { comfort: 2, fun: 2 },
+    interactions: [
+      act({ id: 'build_fire', label: 'Build a fire', category: 'chores', icon: '🪵', durationMinutes: 20, effects: { needs: { fun: 10, comfort: 8 }, skills: { handiness: 12 } }, outcomes: { outcomes: [{ weight: 7, label: 'It catches on the first match', effects: { moodlets: [mood('proud', 'Made fire', 5, 240)] }, skillId: 'handiness', skillBias: 2 }, { weight: 3, label: 'It takes a dozen tries', effects: { stress: 6 } }, { weight: 1, label: 'Singed your hand', effects: { custom: [cx('health:injury', { name: 'Minor burn', bodyPart: 'hand', severity: 12, days: 3 })] } }] }, setsState: { on: true }, autonomyWeight: 0.4, group: 'Fire' }),
+      act({ id: 'sit_by_fire', label: 'Sit by the fire', category: 'social', icon: '🔥', durationMinutes: 60, effects: { perMinute: { comfort: 0.45, social: 0.3, fun: 0.3 }, stress: -25, moodlets: [mood('relaxed', 'Firelight and quiet talk', 10, 480)] }, requiresState: { on: true }, satisfies: ['comfort', 'social'], autonomyWeight: 0.5, llm: 'narrate', group: 'Fire' }),
+      act({ id: 'smores', label: 'Make s\'mores', category: 'needs', icon: '🍫', durationMinutes: 20, effects: { needs: { hunger: 20, fun: 18, social: 12 }, items: [{ op: 'lose', itemId: 'chocolate', qty: 1 }], custom: [cx('needs:ate', { calories: 320, healthy: -0.6, hungerRestored: 20 })], moodlets: [mood('happy', 'S\'mores', 6, 300)] }, requirements: [itemReq('chocolate')], requiresState: { on: true }, autonomyWeight: 0.4, group: 'Fire' }),
+    ],
+  }),
+  def({
+    id: 'fishing_pier', name: 'Fishing pier', category: 'outdoor', icon: '🎣', basePrice: 0, description: 'A short wooden pier over green water, rod holders bolted to the rail.',
+    rooms: ['grounds'], tags: ['park', 'hobby', 'water', 'public'], durabilityUses: 500000, ambient: { comfort: 1 },
+    interactions: [
+      act({ id: 'fish', label: 'Cast a line', category: 'hobby', icon: '🎣', durationMinutes: 75, effects: { perMinute: { fun: 0.25, comfort: 0.2, energy: -0.05 }, skills: { fishing: 34 }, stress: -26, items: [{ op: 'lose', itemId: 'fishing_bait', qty: 1 }], moodlets: [mood('relaxed', 'Nothing but the water', 9, 480)] }, outcomes: { outcomes: [{ weight: 8, label: 'Nothing biting', effects: {} }, { weight: 6, label: 'Caught a bass', effects: { items: [{ op: 'gain', itemId: 'fish', qty: 1 }], moodlets: [mood('proud', 'Caught dinner', 6, 360)] }, skillId: 'fishing', skillBias: 3 }, { weight: 2, label: 'Caught a whole stringer', effects: { items: [{ op: 'gain', itemId: 'fish', qty: 3 }], moodlets: [mood('proud', 'Great day on the water', 10, 480)] }, skillId: 'fishing', skillBias: 2 }, { weight: 1, label: 'Hooked your own thumb', effects: { custom: [cx('health:injury', { name: 'Fish hook in thumb', bodyPart: 'hand', severity: 18, days: 4 })] } }] }, requirements: [itemReq('fishing_bait')], satisfies: ['fun'], autonomyWeight: 0.4, llm: 'narrate', group: 'Fishing' }),
+      act({ id: 'watch_water', label: 'Lean on the rail', category: 'needs', icon: '🌊', durationMinutes: 20, effects: { perMinute: { comfort: 0.4, fun: 0.2 }, stress: -14 }, satisfies: ['comfort'], autonomyWeight: 0.3, group: 'Rest' }),
+    ],
+  }),
+  def({
+    id: 'beach_towel_spot', name: 'Stretch of sand', category: 'outdoor', icon: '🏖️', basePrice: 0, description: 'A patch of shoreline with room for a towel and a cooler.',
+    rooms: ['grounds'], tags: ['beach', 'public'], durabilityUses: 1000000, ambient: { comfort: 2, fun: 2 },
+    interactions: [
+      act({ id: 'sunbathe', label: 'Lie out in the sun', category: 'needs', icon: '☀️', durationMinutes: 60, effects: { perMinute: { comfort: 0.4, fun: 0.3, energy: 0.08, thirst: -0.12 }, stress: -24, moodlets: [mood('relaxed', 'Sun on your skin', 9, 420)] }, outcomes: { outcomes: [{ weight: 8, label: 'Perfect weather', effects: {} }, { weight: 3, label: 'You burned', effects: { custom: [cx('health:contract', { defId: 'sunburn' })] } }] }, satisfies: ['comfort', 'fun'], autonomyWeight: 0.5, group: 'Beach' }),
+      act({ id: 'swim_open', label: 'Swim', category: 'fitness', icon: '🏊', durationMinutes: 40, effects: { perMinute: { energy: -0.35, fun: 0.4, hygiene: 0.1 }, fitness: 1.2, weight: -0.12, skills: { athletics: 24 }, stress: -20, custom: [cx('health:workout', { minutes: 40, kind: 'swim' })] }, satisfies: ['fun'], autonomyWeight: 0.4, group: 'Beach' }),
+      act({ id: 'build_sandcastle', label: 'Build a sandcastle', category: 'family', icon: '🏰', durationMinutes: 35, effects: { needs: { fun: 24, social: 14, hygiene: -14 }, skills: { creativity: 12, parenting: 10 }, custom: [cx('family:play_with_child', {})], moodlets: [mood('playful', 'Sandcastle architect', 7, 300)] }, autonomyWeight: 0.3, group: 'Beach' }),
+    ],
+  }),
+  def({
+    id: 'volleyball_net', name: 'Sand volleyball court', category: 'outdoor', icon: '🏐', basePrice: 2400, description: 'A sagging net between two posts, lines drawn in the sand with a stick.',
+    rooms: ['grounds'], tags: ['park', 'sport', 'public'], durabilityUses: 100000, ambient: { fun: 2, noise: 8 },
+    interactions: [
+      act({ id: 'pickup_game', label: 'Join a pickup game', category: 'fitness', icon: '🏐', durationMinutes: 55, effects: { perMinute: { energy: -0.35, hygiene: -0.5, fun: 0.55, social: 0.45 }, fitness: 1.2, skills: { athletics: 30 }, stress: -18, custom: [cx('health:workout', { minutes: 55, kind: 'sport' })], moodlets: [mood('energized', 'Pickup game', 9, 360)] }, satisfies: ['fun', 'social'], minStage: TEEN, autonomyWeight: 0.5, llm: 'narrate', group: 'Sport' }),
+      act({ id: 'practice_serves', label: 'Practice serves', category: 'fitness', icon: '🎯', durationMinutes: 25, effects: { perMinute: { energy: -0.25, hygiene: -0.3 }, fitness: 0.5, skills: { athletics: 16 } }, autonomyWeight: 0.2, group: 'Sport' }),
+    ],
+  }),
+  def({
+    id: 'public_restroom', name: 'Public restroom', category: 'plumbing', icon: '🚻', basePrice: 6000, description: 'Two stalls, a hand dryer that does nothing, and a door that never quite latches.',
+    rooms: ['restroom'], tags: ['restroom', 'public', 'essential'], durabilityUses: 200000, requiresUtility: 'water',
+    interactions: [
+      act({ id: 'use', label: 'Use the restroom', category: 'needs', icon: '🚻', durationMinutes: 6, effects: { needs: { bladder: 92, hygiene: -3, comfort: 4 } }, satisfies: ['bladder'], autonomyWeight: 4, requiresState: { unoccupied: true }, setsState: { occupied: true }, dirtiesBy: 6, group: 'Restroom' }),
+      act({ id: 'wash_hands', label: 'Wash your hands', category: 'needs', icon: '🧼', durationMinutes: 2, effects: { needs: { hygiene: 8 } }, autonomyWeight: 0.8, group: 'Restroom' }),
+      act({ id: 'freshen_up', label: 'Freshen up in the mirror', category: 'needs', icon: '🪞', durationMinutes: 8, effects: { needs: { hygiene: 16, comfort: 6 }, moodlets: [mood('confident', 'Pulled yourself together', 4, 180)] }, requiresState: { maxDirty: 70 }, autonomyWeight: 0.5, group: 'Restroom' }),
+      act({ id: 'change_diaper_here', label: 'Use the changing table', category: 'family', icon: '👶', durationMinutes: 8, effects: { skills: { parenting: 6 }, custom: [cx('family:change_diaper', {})], items: [{ op: 'lose', itemId: 'diapers', qty: 1 }] }, requirements: [itemReq('diapers')], minStage: TEEN, autonomyWeight: 0.4, group: 'Family' }),
+    ],
+  }),
+  def({
+    id: 'vending_machine', name: 'Vending machine', category: 'commercial', icon: '🥤', basePrice: 4200, description: 'Glowing rows of snacks, a coil that eats one bag in ten.', requiresUtility: 'electric',
+    rooms: ['lobby'], tags: ['food', 'public', 'shop'], durabilityUses: 100000, runningCostMonthly: 22,
+    interactions: [
+      act({ id: 'buy_snack', label: 'Buy a snack', category: 'shop', icon: '🍫', durationMinutes: 3, cost: 2.5, effects: { needs: { hunger: 14, fun: 5 }, custom: [cx('amenity:vending', { itemId: 'snacks' }), cx('needs:ate', { calories: 260, healthy: -0.7, hungerRestored: 14 })] }, outcomes: { outcomes: [{ weight: 14, label: 'It drops', effects: {} }, { weight: 1, label: 'It hangs on the coil', effects: { stress: 8, moodlets: [mood('angry', 'Robbed by a vending machine', -5, 120)] } }] }, satisfies: ['hunger'], autonomyWeight: 1.2, group: 'Vending' }),
+      act({ id: 'buy_drink', label: 'Buy a cold drink', category: 'shop', icon: '🥤', durationMinutes: 2, cost: 2.25, effects: { needs: { thirst: 42, comfort: 4 }, custom: [cx('amenity:vending', { itemId: 'soda' })] }, satisfies: ['thirst'], autonomyWeight: 1.6, group: 'Vending' }),
+      act({ id: 'buy_energy', label: 'Buy an energy drink', category: 'shop', icon: '⚡', durationMinutes: 2, cost: 3.75, effects: { needs: { thirst: 30, energy: 16 }, caffeine: 160, custom: [cx('amenity:vending', { itemId: 'energy_drink' })] }, minStage: TEEN, autonomyWeight: 0.6, group: 'Vending' }),
+    ],
+  }),
+  def({
+    id: 'food_truck', name: 'Food truck', category: 'commercial', icon: '🚚', basePrice: 95000, description: 'A wrapped step van with a chalkboard menu and a line of six people.',
+    rooms: ['curb'], tags: ['food', 'street', 'shop'], durabilityUses: 200000,
+    interactions: [
+      act({ id: 'order_street_food', label: 'Order from the truck', category: 'needs', icon: '🌮', durationMinutes: 18, cost: 14, effects: { needs: { hunger: 52, fun: 14, social: 6 }, custom: [cx('shop:order', { what: 'street_food' }), cx('needs:ate', { calories: 780, healthy: -0.1, hungerRestored: 52 })], moodlets: [mood('happy', 'Best tacos in town', 6, 300)] }, satisfies: ['hunger'], autonomyWeight: 1.4, llm: 'narrate', group: 'Order' }),
+      act({ id: 'order_drink_truck', label: 'Grab a drink from the window', category: 'needs', icon: '🥤', durationMinutes: 6, cost: 4, effects: { needs: { thirst: 40 } }, satisfies: ['thirst'], autonomyWeight: 0.7, group: 'Order' }),
+      act({ id: 'chat_truck', label: 'Chat with the cook', category: 'social', icon: '💬', durationMinutes: 10, effects: { needs: { social: 14, fun: 8 } }, satisfies: ['social'], autonomyWeight: 0.3, llm: 'narrate', group: 'Social' }),
+    ],
+  }),
+  def({
+    id: 'farmers_stall', name: 'Market stall', category: 'commercial', icon: '🥕', basePrice: 1800, description: 'Folding tables under a pop-up canopy, produce in cardboard flats.',
+    rooms: ['market'], tags: ['grocery', 'market', 'shop'], durabilityUses: 60000,
+    interactions: [
+      act({ id: 'buy_produce', label: 'Buy produce', category: 'shop', icon: '🥕', durationMinutes: 12, cost: 18, effects: { items: [{ op: 'gain', itemId: 'vegetables', qty: 3 }, { op: 'gain', itemId: 'fruit', qty: 2 }], custom: [cx('shop:order', { what: 'produce' })], moodlets: [mood('proud', 'Shopping local', 4, 240)] }, autonomyWeight: 0.7, group: 'Market' }),
+      act({ id: 'sample', label: 'Take a free sample', category: 'needs', icon: '🍓', durationMinutes: 3, effects: { needs: { hunger: 5, fun: 5 } }, autonomyWeight: 0.5, group: 'Market' }),
+      act({ id: 'haggle', label: 'Ask about the end-of-day price', category: 'shop', icon: '🤝', durationMinutes: 8, effects: { skills: { negotiation: 12 } }, outcomes: { outcomes: [{ weight: 5, label: 'They knock a few dollars off', effects: { money: { amount: 4, memo: 'Market discount', category: 'shop' } }, skillId: 'negotiation', skillBias: 2 }, { weight: 5, label: 'Prices are prices', effects: {} }] }, minStage: TEEN, autonomyWeight: 0.2, llm: 'narrate', group: 'Market' }),
+    ],
+  }),
+  def({
+    id: 'flower_display', name: 'Flower cooler', category: 'commercial', icon: '💐', basePrice: 7500, description: 'A glass cooler of buckets: roses, carnations, whatever\'s in season.', requiresUtility: 'electric',
+    rooms: ['floor'], tags: ['shop', 'gift'], durabilityUses: 80000, runningCostMonthly: 40,
+    interactions: [
+      act({ id: 'buy_flowers', label: 'Buy flowers', category: 'shop', icon: '💐', durationMinutes: 10, cost: 24, effects: { items: [{ op: 'gain', itemId: 'gift_flowers', qty: 1 }], custom: [cx('shop:order', { what: 'flowers' })], moodlets: [mood('hopeful', 'Flowers for someone', 5, 300)] }, autonomyWeight: 0.4, group: 'Shop' }),
+      act({ id: 'buy_arrangement', label: 'Order an arrangement', category: 'shop', icon: '🌸', durationMinutes: 20, cost: 78, effects: { items: [{ op: 'gain', itemId: 'gift_flowers', qty: 1 }], custom: [cx('shop:order', { what: 'flowers' })], moodlets: [mood('hopeful', 'Something special', 7, 480)] }, autonomyWeight: 0.15, llm: 'narrate', group: 'Shop' }),
+      act({ id: 'smell_flowers', label: 'Smell the flowers', category: 'needs', icon: '🌷', durationMinutes: 3, effects: { needs: { fun: 6, comfort: 6 }, stress: -6 }, autonomyWeight: 0.3, group: 'Shop' }),
+    ],
+  }),
+  def({
+    id: 'bus_stop_sign', name: 'Bus stop', category: 'commercial', icon: '🚏', basePrice: 3500, description: 'A metal sign, a bench, and a route map faded past reading.',
+    rooms: ['curb'], tags: ['transit', 'public'], durabilityUses: 500000,
+    interactions: [
+      act({ id: 'wait_bus', label: 'Wait for the bus', category: 'travel', icon: '🚌', durationMinutes: 10, effects: { perMinute: { comfort: -0.08 }, custom: [cx('transport:bus', {})] }, autonomyWeight: 0.4, group: 'Transit' }),
+      act({ id: 'check_schedule', label: 'Check the schedule', category: 'travel', icon: '🕒', durationMinutes: 2, effects: { custom: [cx('transport:buy_ticket', { kind: 'transit' })] }, autonomyWeight: 0.2, group: 'Transit' }),
+      act({ id: 'sit_stop', label: 'Sit and wait', category: 'needs', icon: '🪑', durationMinutes: 15, effects: { perMinute: { comfort: 0.15, energy: 0.06 } }, requiresState: { unoccupied: true }, setsState: { occupied: true }, autonomyWeight: 0.2, group: 'Transit' }),
+    ],
+  }),
+  def({
+    id: 'train_platform', name: 'Rail platform', category: 'commercial', icon: '🚉', basePrice: 180000, description: 'A concrete platform with a yellow safety strip and an arrivals board.', requiresUtility: 'electric',
+    rooms: ['platform'], tags: ['transit', 'public'], durabilityUses: 1000000,
+    interactions: [
+      act({ id: 'board_train', label: 'Board the train', category: 'travel', icon: '🚆', durationMinutes: 8, effects: { custom: [cx('transport:train', {})] }, autonomyWeight: 0.4, group: 'Transit' }),
+      act({ id: 'wait_platform', label: 'Wait on the platform', category: 'travel', icon: '⏳', durationMinutes: 12, effects: { perMinute: { comfort: -0.06, fun: 0.05 } }, autonomyWeight: 0.2, group: 'Transit' }),
+    ],
+  }),
+  def({
+    id: 'ticket_kiosk', name: 'Ticket kiosk', category: 'commercial', icon: '🎫', basePrice: 12000, description: 'A touchscreen that takes cards, sometimes.', requiresUtility: 'electric',
+    rooms: ['lobby'], tags: ['transit', 'public'], durabilityUses: 200000,
+    interactions: [
+      act({ id: 'buy_fare', label: 'Buy a fare', category: 'travel', icon: '🎫', durationMinutes: 4, cost: 2.5, effects: { custom: [cx('transport:buy_ticket', { kind: 'transit' })] }, autonomyWeight: 0.5, group: 'Transit' }),
+      act({ id: 'buy_pass', label: 'Buy a monthly pass', category: 'travel', icon: '🗓️', durationMinutes: 6, cost: 46, effects: { items: [{ op: 'gain', itemId: 'bus_pass', qty: 1 }], custom: [cx('transport:buy_ticket', { kind: 'transit' })] }, autonomyWeight: 0.2, group: 'Transit' }),
+    ],
+  }),
+  def({
+    id: 'airport_gate', name: 'Departure gate', category: 'commercial', icon: '✈️', basePrice: 400000, description: 'Rows of linked chairs, one outlet for thirty people, a boarding display.', requiresUtility: 'electric',
+    rooms: ['concourse'], tags: ['transit', 'travel', 'public'], durabilityUses: 1000000,
+    interactions: [
+      act({ id: 'board_flight', label: 'Board your flight', category: 'travel', icon: '✈️', durationMinutes: 25, effects: { custom: [cx('transport:flight', {})], moodlets: [mood('anxious', 'Flying today', -3, 240)] }, autonomyWeight: 0.3, group: 'Travel' }),
+      act({ id: 'wait_gate', label: 'Wait at the gate', category: 'needs', icon: '⏳', durationMinutes: 45, effects: { perMinute: { comfort: -0.1, fun: 0.08, energy: -0.02 }, stress: 4 }, autonomyWeight: 0.2, group: 'Travel' }),
+      act({ id: 'charge_at_gate', label: 'Fight for an outlet', category: 'phone', icon: '🔌', durationMinutes: 20, effects: { custom: [cx('phone:charge', { amount: 35 })] }, autonomyWeight: 0.2, group: 'Travel' }),
+    ],
+  }),
+  def({
+    id: 'security_checkpoint', name: 'Security checkpoint', category: 'commercial', icon: '🛂', basePrice: 250000, description: 'Belt trays, a body scanner, and a line that moves in lurches.', requiresUtility: 'electric',
+    rooms: ['concourse'], tags: ['transit', 'security', 'public'], durabilityUses: 1000000,
+    interactions: [
+      act({ id: 'go_through_security', label: 'Go through security', category: 'travel', icon: '🛂', durationMinutes: 25, effects: { needs: { comfort: -14 }, stress: 10, custom: [cx('transport:security_screening', {})] }, outcomes: { outcomes: [{ weight: 8, label: 'Straight through', effects: {} }, { weight: 3, label: 'Pulled for a bag check', effects: { stress: 8, timeElapsedMinutes: 12 } }, { weight: 1, label: 'Randomly selected for extra screening', effects: { stress: 14, timeElapsedMinutes: 20, moodlets: [mood('embarrassed', 'Patted down', -5, 180)] } }] }, autonomyWeight: 0.3, llm: 'narrate', group: 'Travel' }),
+    ],
+  }),
+  def({
+    id: 'fuel_pump', name: 'Fuel pump', category: 'commercial', icon: '⛽', basePrice: 28000, description: 'Pump 4. The screen plays an ad you cannot mute.', requiresUtility: 'electric',
+    rooms: ['forecourt'], tags: ['fuel', 'vehicle'], durabilityUses: 500000,
+    interactions: [
+      act({ id: 'fill_tank', label: 'Fill the tank', category: 'travel', icon: '⛽', durationMinutes: 8, effects: { custom: [cx('transport:refuel', { full: true })] }, requirements: [{ kind: 'vehicle', reason: 'No vehicle here', params: {} }], autonomyWeight: 1, group: 'Fuel' }),
+      act({ id: 'partial_fill', label: 'Put in $20', category: 'travel', icon: '💵', durationMinutes: 5, effects: { custom: [cx('transport:refuel', { dollars: 20 })] }, requirements: [{ kind: 'vehicle', reason: 'No vehicle here', params: {} }], autonomyWeight: 0.5, group: 'Fuel' }),
+      act({ id: 'squeegee', label: 'Clean the windshield', category: 'chores', icon: '🧽', durationMinutes: 4, effects: { custom: [cx('transport:car_wash', { level: 'windshield' })], moodlets: [mood('proud', 'Clean windshield', 2, 180)] }, autonomyWeight: 0.2, group: 'Fuel' }),
+    ],
+  }),
+  def({
+    id: 'ev_charger', name: 'EV charger', category: 'commercial', icon: '🔌', basePrice: 45000, description: 'A bank of fast chargers, three of them working.', requiresUtility: 'electric',
+    rooms: ['forecourt'], tags: ['fuel', 'vehicle', 'ev'], durabilityUses: 300000,
+    interactions: [
+      act({ id: 'fast_charge', label: 'Fast charge', category: 'travel', icon: '⚡', durationMinutes: 35, effects: { perMinute: { fun: 0.05 }, custom: [cx('transport:charge_ev', { minutes: 35, level: 80 })] }, requirements: [{ kind: 'vehicle', reason: 'No EV here', params: { fuelType: 'electric' } }], autonomyWeight: 0.8, group: 'Charge' }),
+      act({ id: 'top_up', label: 'Top up while you wait', category: 'travel', icon: '🔋', durationMinutes: 15, effects: { custom: [cx('transport:charge_ev', { minutes: 15, level: 40 })] }, requirements: [{ kind: 'vehicle', reason: 'No EV here', params: { fuelType: 'electric' } }], autonomyWeight: 0.4, group: 'Charge' }),
+    ],
+  }),
+  def({
+    id: 'car_wash_bay', name: 'Car wash bay', category: 'commercial', icon: '🚿', basePrice: 120000, description: 'Rollers, colored foam, and a light that tells you when to stop.', requiresUtility: 'water',
+    rooms: ['bay'], tags: ['vehicle', 'service'], durabilityUses: 300000,
+    interactions: [
+      act({ id: 'basic_wash', label: 'Basic wash', category: 'travel', icon: '🚿', durationMinutes: 12, cost: 12, effects: { custom: [cx('transport:car_wash', { level: 'basic' })], moodlets: [mood('proud', 'Clean car', 3, 720)] }, requirements: [{ kind: 'vehicle', reason: 'No vehicle here', params: {} }], autonomyWeight: 0.3, group: 'Wash' }),
+      act({ id: 'deluxe_wash', label: 'Deluxe wash and wax', category: 'travel', icon: '✨', durationMinutes: 25, cost: 32, effects: { custom: [cx('transport:car_wash', { level: 'deluxe' })], moodlets: [mood('proud', 'Showroom clean', 6, 1440)] }, requirements: [{ kind: 'vehicle', reason: 'No vehicle here', params: {} }], autonomyWeight: 0.15, group: 'Wash' }),
+      act({ id: 'vacuum_car', label: 'Vacuum the interior', category: 'chores', icon: '🧹', durationMinutes: 15, cost: 2, effects: { needs: { energy: -6 }, custom: [cx('transport:car_wash', { level: 'interior' })] }, autonomyWeight: 0.2, group: 'Wash' }),
+    ],
+  }),
+  def({
+    id: 'car_lift', name: 'Service lift', category: 'commercial', icon: '🔧', basePrice: 24000, description: 'A two-post lift with an oil-stained floor beneath it.',
+    rooms: ['shop'], tags: ['vehicle', 'service', 'mechanic'], durabilityUses: 200000,
+    interactions: [
+      act({ id: 'oil_change', label: 'Get an oil change', category: 'travel', icon: '🛢️', durationMinutes: 45, cost: 78, effects: { custom: [cx('transport:service', { job: 'oil_change' })] }, requirements: [{ kind: 'vehicle', reason: 'No vehicle here', params: {} }], autonomyWeight: 0.3, group: 'Service' }),
+      act({ id: 'diagnose', label: 'Have them diagnose the noise', category: 'travel', icon: '🔍', durationMinutes: 60, cost: 145, effects: { custom: [cx('transport:service', { job: 'diagnose' })] }, autonomyWeight: 0.4, llm: 'narrate', group: 'Service' }),
+      act({ id: 'repair_shop', label: 'Authorize the repair', category: 'travel', icon: '🔧', durationMinutes: 120, effects: { custom: [cx('transport:service', { job: 'repair' })] }, autonomyWeight: 0.4, group: 'Service' }),
+      act({ id: 'inspection', label: 'State inspection', category: 'legal', icon: '📋', durationMinutes: 35, cost: 25, effects: { custom: [cx('transport:service', { job: 'inspection' })] }, autonomyWeight: 0.3, group: 'Service' }),
+    ],
+  }),
+  def({
+    id: 'parts_counter', name: 'Parts counter', category: 'commercial', icon: '🔩', basePrice: 8000, description: 'A long counter, a catalog terminal, and a guy who knows every part number.',
+    rooms: ['shop'], tags: ['vehicle', 'shop'], durabilityUses: 200000,
+    interactions: [
+      act({ id: 'buy_parts', label: 'Buy parts', category: 'shop', icon: '🔩', durationMinutes: 15, cost: 65, effects: { custom: [cx('transport:parts', {})], skills: { mechanics: 8 } }, autonomyWeight: 0.2, group: 'Parts' }),
+      act({ id: 'ask_advice', label: 'Ask how hard the job is', category: 'social', icon: '💬', durationMinutes: 10, effects: { skills: { mechanics: 14 }, needs: { social: 8 } }, autonomyWeight: 0.2, llm: 'narrate', group: 'Parts' }),
+      act({ id: 'free_code_read', label: 'Get the check-engine code read', category: 'travel', icon: '💡', durationMinutes: 12, effects: { custom: [cx('transport:service', { job: 'diagnose' })], skills: { mechanics: 10 } }, autonomyWeight: 0.3, group: 'Parts' }),
+    ],
+  }),
+  def({
+    id: 'dealer_lot', name: 'Dealership lot', category: 'commercial', icon: '🚗', basePrice: 0, description: 'Rows of cars with prices soaped on the windshields and one inflatable tube man.',
+    rooms: ['lot'], tags: ['vehicle', 'shop'], durabilityUses: 1000000,
+    interactions: [
+      act({ id: 'browse_cars', label: 'Browse the lot', category: 'shop', icon: '🚗', durationMinutes: 30, effects: { needs: { fun: 10 }, custom: [cx('transport:browse_vehicles', {})] }, autonomyWeight: 0.3, group: 'Cars' }),
+      act({ id: 'test_drive', label: 'Take a test drive', category: 'shop', icon: '🔑', durationMinutes: 40, effects: { needs: { fun: 20 }, skills: { driving: 10 }, custom: [cx('transport:test_drive', {})], moodlets: [mood('hopeful', 'That new car smell', 6, 300)] }, requirements: [{ kind: 'license', reason: 'You need a license', params: {} }], minStage: TEEN, autonomyWeight: 0.2, llm: 'narrate', group: 'Cars' }),
+      act({ id: 'negotiate_car', label: 'Sit down with a salesperson', category: 'shop', icon: '🤝', durationMinutes: 75, effects: { needs: { energy: -12 }, stress: 12, skills: { negotiation: 30 }, custom: [cx('transport:buy_vehicle', {})] }, minStage: YA, autonomyWeight: 0.2, llm: 'adjudicate', group: 'Cars' }),
+    ],
+  }),
+  def({
+    id: 'rental_counter', name: 'Rental counter', category: 'commercial', icon: '🔑', basePrice: 9000, description: 'A counter, a queue, and a hard sell on the insurance.',
+    rooms: ['lobby'], tags: ['vehicle', 'service'], durabilityUses: 200000,
+    interactions: [
+      act({ id: 'rent_car', label: 'Rent a car', category: 'travel', icon: '🚗', durationMinutes: 30, cost: 68, effects: { custom: [cx('transport:rent_vehicle', { days: 1 })] }, requirements: [{ kind: 'license', reason: 'You need a license', params: {} }], minStage: YA, autonomyWeight: 0.2, group: 'Rental' }),
+      act({ id: 'return_car', label: 'Return the rental', category: 'travel', icon: '↩️', durationMinutes: 15, effects: { custom: [cx('transport:rent_vehicle', { days: 0, action: 'return' })] }, autonomyWeight: 0.2, group: 'Rental' }),
+    ],
+  }),
+  def({
+    id: 'parking_space', name: 'Parking space', category: 'commercial', icon: '🅿️', basePrice: 0, description: 'A painted rectangle, a meter, and a two-hour limit.',
+    rooms: ['lot'], tags: ['vehicle', 'public'], durabilityUses: 1000000,
+    interactions: [
+      act({ id: 'park', label: 'Park here', category: 'travel', icon: '🅿️', durationMinutes: 4, effects: { custom: [cx('transport:park', { action: 'park' })] }, autonomyWeight: 0.6, group: 'Parking' }),
+      act({ id: 'pay_meter', label: 'Feed the meter', category: 'travel', icon: '🪙', durationMinutes: 3, cost: 2.5, effects: { custom: [cx('transport:park', { action: 'pay_meter' })] }, autonomyWeight: 0.8, group: 'Parking' }),
+    ],
+  }),
+  def({
+    id: 'hotel_bed', name: 'Hotel bed', category: 'furniture', icon: '🛏️', basePrice: 1400, description: 'A king bed with too many pillows and a blanket tucked in like a vise.',
+    rooms: ['room'], tags: ['bed', 'sleep', 'hotel'], durabilityUses: 200000, ambient: { comfort: 3 },
+    interactions: [
+      ...sleepSet(0.3, 0.42, 0.95, { sleepLabel: 'Sleep at the hotel', make: false }),
+      act({ id: 'room_service', label: 'Order room service', category: 'needs', icon: '🍽️', durationMinutes: 40, cost: 42, effects: { needs: { hunger: 58, comfort: 14, fun: 8 }, custom: [cx('amenity:hotel', { action: 'room_service' }), cx('needs:ate', { calories: 820, healthy: 0, hungerRestored: 58 })], moodlets: [mood('relaxed', 'Room service', 6, 300)] }, satisfies: ['hunger'], autonomyWeight: 0.3, group: 'Hotel' }),
+    ],
+  }),
+  def({
+    id: 'hotel_lobby_desk', name: 'Front desk', category: 'commercial', icon: '🛎️', basePrice: 14000, description: 'A marble-topped desk, a bell, and a rack of city maps nobody takes.',
+    rooms: ['lobby'], tags: ['hotel', 'service'], durabilityUses: 300000,
+    interactions: [
+      act({ id: 'check_in', label: 'Check in', category: 'travel', icon: '🛎️', durationMinutes: 15, cost: 165, effects: { custom: [cx('amenity:hotel', { action: 'checkin' })], moodlets: [mood('relaxed', 'A night away', 6, 720)] }, minStage: YA, autonomyWeight: 0.2, group: 'Hotel' }),
+      act({ id: 'check_out', label: 'Check out', category: 'travel', icon: '↩️', durationMinutes: 10, effects: { custom: [cx('amenity:hotel', { action: 'checkout' })] }, autonomyWeight: 0.2, group: 'Hotel' }),
+      act({ id: 'ask_recommendation', label: 'Ask for a recommendation', category: 'social', icon: '🗺️', durationMinutes: 8, effects: { needs: { social: 8 } }, autonomyWeight: 0.2, llm: 'narrate', group: 'Hotel' }),
+    ],
+  }),
+  def({
+    id: 'pew', name: 'Pew', category: 'furniture', icon: '⛪', basePrice: 1800, description: 'A long oak bench with hymnals in the rack and a kneeler that folds down.',
+    rooms: ['sanctuary'], tags: ['worship', 'seating'], durabilityUses: 500000, ambient: { comfort: 1 },
+    interactions: [
+      act({ id: 'attend_service', label: 'Attend the service', category: 'civic', icon: '⛪', durationMinutes: 75, effects: { perMinute: { social: 0.2, comfort: 0.15, fun: 0.05 }, stress: -22, custom: [cx('civic:service', {})], moodlets: [mood('relaxed', 'Sunday service', 8, 720)] }, requirements: [timeReq(480, 780, 'Services are Sunday morning')], satisfies: ['social'], autonomyWeight: 0.6, llm: 'narrate', group: 'Worship' }),
+      act({ id: 'sit_quietly', label: 'Sit quietly', category: 'needs', icon: '🕯️', durationMinutes: 20, effects: { perMinute: { comfort: 0.4 }, stress: -18, custom: [cx('civic:pray', {})], moodlets: [mood('relaxed', 'A quiet half hour', 6, 360)] }, satisfies: ['comfort'], autonomyWeight: 0.4, group: 'Worship' }),
+      act({ id: 'coffee_hour', label: 'Stay for coffee hour', category: 'social', icon: '☕', durationMinutes: 30, effects: { needs: { social: 26, fun: 10, thirst: 18 }, caffeine: 70 }, satisfies: ['social'], autonomyWeight: 0.4, llm: 'narrate', group: 'Worship' }),
+    ],
+  }),
+  def({
+    id: 'altar', name: 'Altar', category: 'decor', icon: '🕯️', basePrice: 6000, description: 'A draped table with candles, flowers, and a worn brass cross.',
+    rooms: ['sanctuary'], tags: ['worship'], durabilityUses: 1000000, ambient: { comfort: 2 },
+    interactions: [
+      act({ id: 'pray', label: 'Pray', category: 'civic', icon: '🙏', durationMinutes: 15, effects: { perMinute: { comfort: 0.4 }, stress: -20, custom: [cx('civic:pray', {})], moodlets: [mood('hopeful', 'Prayed about it', 8, 480)] }, satisfies: ['comfort'], autonomyWeight: 0.5, llm: 'narrate', group: 'Worship' }),
+      act({ id: 'donate_offering', label: 'Leave an offering', category: 'civic', icon: '💵', durationMinutes: 3, cost: 20, effects: { custom: [cx('civic:donate', { amount: 20 })], moodlets: [mood('proud', 'Gave what you could', 5, 480)] }, autonomyWeight: 0.2, group: 'Worship' }),
+    ],
+  }),
+  def({
+    id: 'candle_stand', name: 'Votive stand', category: 'decor', icon: '🕯️', basePrice: 900, description: 'Tiers of red glass cups, half of them lit, wax pooled at the base.',
+    rooms: ['sanctuary'], tags: ['worship'], durabilityUses: 500000, ambient: { comfort: 1 },
+    interactions: [
+      act({ id: 'light_candle', label: 'Light a candle for someone', category: 'civic', icon: '🕯️', durationMinutes: 8, cost: 2, effects: { stress: -14, custom: [cx('civic:pray', {})], moodlets: [mood('nostalgic', 'Lit a candle', 7, 720)] }, autonomyWeight: 0.3, llm: 'narrate', group: 'Worship' }),
+    ],
+  }),
+  def({
+    id: 'community_hall_table', name: 'Folding table', category: 'furniture', icon: '🪑', basePrice: 180, description: 'Eight-foot folding tables in a linoleum hall, coffee urn at the end.',
+    rooms: ['hall'], tags: ['community', 'seating'], durabilityUses: 100000, portable: true,
+    interactions: [
+      act({ id: 'attend_meeting', label: 'Attend the meeting', category: 'civic', icon: '📋', durationMinutes: 60, effects: { needs: { social: 18, fun: 4, comfort: -6 }, custom: [cx('civic:meeting', {})], moodlets: [mood('proud', 'Showed up for the neighborhood', 5, 480)] }, minStage: TEEN, autonomyWeight: 0.3, llm: 'narrate', group: 'Community' }),
+      act({ id: 'community_class', label: 'Take a community class', category: 'hobby', icon: '🎨', durationMinutes: 90, cost: 15, effects: { needs: { fun: 22, social: 20, energy: -10 }, skills: { creativity: 30 }, moodlets: [mood('inspired', 'Learned something new', 7, 720)] }, minStage: TEEN, autonomyWeight: 0.3, group: 'Community' }),
+      act({ id: 'volunteer_hall', label: 'Volunteer at the event', category: 'civic', icon: '🤝', durationMinutes: 120, effects: { needs: { social: 28, fun: 10, energy: -22 }, custom: [cx('civic:volunteer', { hours: 2 })], moodlets: [mood('proud', 'Gave your time', 10, 1440)] }, minStage: TEEN, autonomyWeight: 0.3, llm: 'narrate', group: 'Community' }),
+    ],
+  }),
+  def({
+    id: 'soup_kitchen_counter', name: 'Serving counter', category: 'commercial', icon: '🍲', basePrice: 12000, description: 'Steam trays, a stack of compartment trays, and a line down the block at noon.',
+    rooms: ['dining'], tags: ['charity', 'food'], durabilityUses: 200000,
+    interactions: [
+      act({ id: 'serve_meals', label: 'Serve meals', category: 'civic', icon: '🍲', durationMinutes: 120, effects: { needs: { social: 24, energy: -24, fun: 8 }, custom: [cx('civic:volunteer', { hours: 2 })], moodlets: [mood('grateful', 'Served a hundred plates', 12, 1440)] }, minStage: TEEN, autonomyWeight: 0.3, llm: 'narrate', group: 'Volunteer' }),
+      act({ id: 'get_a_meal', label: 'Get a meal', category: 'needs', icon: '🥣', durationMinutes: 30, effects: { needs: { hunger: 50, social: 10 }, custom: [cx('amenity:food_bank', {}), cx('needs:ate', { calories: 620, healthy: 0.2, hungerRestored: 50 })] }, satisfies: ['hunger'], autonomyWeight: 0.4, llm: 'narrate', group: 'Services' }),
+      act({ id: 'food_pantry', label: 'Pick up a food box', category: 'needs', icon: '📦', durationMinutes: 25, effects: { items: [{ op: 'gain', itemId: 'rice', qty: 2 }, { op: 'gain', itemId: 'pasta', qty: 2 }, { op: 'gain', itemId: 'vegetables', qty: 2 }, { op: 'gain', itemId: 'cereal', qty: 1 }], custom: [cx('amenity:food_bank', {})] }, autonomyWeight: 0.3, group: 'Services' }),
+    ],
+  }),
+  def({
+    id: 'cot', name: 'Shelter cot', category: 'furniture', icon: '🛏️', basePrice: 120, description: 'A canvas cot with a folded blanket and a number taped to the frame.',
+    rooms: ['dorm'], tags: ['bed', 'shelter'], durabilityUses: 20000, portable: true,
+    interactions: [
+      act({ id: 'take_a_bed', label: 'Take a bed for the night', category: 'needs', icon: '🛏️', durationMinutes: 420, effects: { perMinute: { energy: 0.19, comfort: 0.05 }, needs: { hunger: -12, bladder: -18 }, stress: -4, custom: [cx('amenity:shelter_bed', {}), cx('health:sleep', { minutes: 420, quality: 0.5 })] }, satisfies: ['energy'], requiresState: { unoccupied: true }, setsState: { occupied: true }, autonomyWeight: 2, group: 'Shelter' }),
+      act({ id: 'rest_cot', label: 'Lie down for a bit', category: 'needs', icon: '😌', durationMinutes: 60, effects: { perMinute: { energy: 0.16, comfort: 0.1 } }, autonomyWeight: 0.6, group: 'Shelter' }),
+    ],
+  }),
+  def({
+    id: 'courthouse_bench', name: 'Gallery bench', category: 'furniture', icon: '⚖️', basePrice: 2200, description: 'Hard wooden benches behind the bar, filling up before each docket call.',
+    rooms: ['courtroom'], tags: ['legal', 'seating'], durabilityUses: 500000,
+    interactions: [
+      act({ id: 'wait_docket', label: 'Wait for your case to be called', category: 'legal', icon: '⏳', durationMinutes: 90, effects: { perMinute: { comfort: -0.12 }, stress: 16, custom: [cx('legal:court', { action: 'wait' })] }, autonomyWeight: 0.3, group: 'Court' }),
+      act({ id: 'observe_court', label: 'Watch the proceedings', category: 'legal', icon: '👀', durationMinutes: 45, effects: { skills: { law: 20 }, needs: { fun: 4 } }, autonomyWeight: 0.15, llm: 'narrate', group: 'Court' }),
+    ],
+  }),
+  def({
+    id: 'judge_bench', name: 'Judge\'s bench', category: 'commercial', icon: '⚖️', basePrice: 30000, description: 'Raised oak, a nameplate, a gavel that mostly stays in its holder.',
+    rooms: ['courtroom'], tags: ['legal'], durabilityUses: 1000000,
+    interactions: [
+      act({ id: 'hearing', label: 'Appear before the judge', category: 'legal', icon: '⚖️', durationMinutes: 30, effects: { stress: 26, custom: [cx('legal:court', { action: 'hearing' })], moodlets: [mood('anxious', 'Stood before a judge', -10, 720)] }, autonomyWeight: 0.4, llm: 'adjudicate', group: 'Court' }),
+      act({ id: 'file_continuance', label: 'Ask for a continuance', category: 'legal', icon: '📅', durationMinutes: 15, effects: { skills: { law: 12 }, custom: [cx('legal:court', { action: 'continuance' })] }, autonomyWeight: 0.2, llm: 'narrate', group: 'Court' }),
+    ],
+  }),
+  def({
+    id: 'jury_box', name: 'Jury box', category: 'furniture', icon: '👥', basePrice: 8000, description: 'Fourteen swiveling chairs behind a low wooden rail.',
+    rooms: ['courtroom'], tags: ['legal', 'civic'], durabilityUses: 500000,
+    interactions: [
+      act({ id: 'serve_jury', label: 'Serve on the jury', category: 'civic', icon: '👥', durationMinutes: 300, effects: { perMinute: { comfort: -0.06, energy: -0.04 }, needs: { fun: -10 }, money: { amount: 40, memo: 'Juror pay', category: 'income' }, skills: { law: 40 }, custom: [cx('legal:court', { action: 'jury' })], moodlets: [mood('proud', 'Did your civic duty', 6, 1440)] }, minStage: YA, autonomyWeight: 0.3, llm: 'narrate', group: 'Court' }),
+      act({ id: 'voir_dire', label: 'Sit through jury selection', category: 'civic', icon: '🗣️', durationMinutes: 120, effects: { needs: { comfort: -14, fun: -12 }, stress: 8, custom: [cx('legal:court', { action: 'voir_dire' })] }, minStage: YA, autonomyWeight: 0.3, llm: 'narrate', group: 'Court' }),
+    ],
+  }),
+  def({
+    id: 'holding_cell', name: 'Holding cell', category: 'commercial', icon: '🚔', basePrice: 60000, description: 'Cinderblock, a steel bench, a payphone on the wall, fluorescent light that never goes off.',
+    rooms: ['booking'], tags: ['legal', 'jail'], durabilityUses: 1000000,
+    interactions: [
+      act({ id: 'wait_out', label: 'Wait it out', category: 'legal', icon: '⏳', durationMinutes: 180, effects: { perMinute: { comfort: -0.14, fun: -0.1, social: -0.05 }, stress: 22, custom: [cx('legal:custody', { action: 'wait' })], moodlets: [mood('sad', 'Held in a cell', -18, 1440)] }, autonomyWeight: 0.5, group: 'Custody' }),
+      act({ id: 'phone_call', label: 'Make your phone call', category: 'legal', icon: '📞', durationMinutes: 10, effects: { needs: { social: 10 }, stress: -8, custom: [cx('legal:custody', { action: 'call' })] }, autonomyWeight: 1, llm: 'narrate', group: 'Custody' }),
+      act({ id: 'post_bail', label: 'Ask about bail', category: 'legal', icon: '💵', durationMinutes: 20, effects: { custom: [cx('legal:bail', {})] }, autonomyWeight: 0.8, group: 'Custody' }),
+    ],
+  }),
+  def({
+    id: 'jail_bunk', name: 'Jail bunk', category: 'furniture', icon: '🛏️', basePrice: 900, description: 'A steel bunk with a thin mat and a folded county blanket.',
+    rooms: ['cell'], tags: ['bed', 'jail'], durabilityUses: 500000,
+    interactions: [
+      act({ id: 'sleep_jail', label: 'Sleep', category: 'needs', icon: '😴', durationMinutes: 420, effects: { perMinute: { energy: 0.18, comfort: -0.02 }, needs: { hunger: -12, bladder: -18 }, stress: 4, custom: [cx('legal:custody', { action: 'sleep' }), cx('health:sleep', { minutes: 420, quality: 0.4 })] }, satisfies: ['energy'], requiresState: { unoccupied: true }, setsState: { occupied: true }, autonomyWeight: 2.5, group: 'Custody' }),
+      act({ id: 'read_jail', label: 'Read whatever\'s on the cart', category: 'hobby', icon: '📖', durationMinutes: 60, effects: { perMinute: { fun: 0.12 }, skills: { logic: 14 }, stress: -8 }, autonomyWeight: 0.8, group: 'Custody' }),
+      act({ id: 'work_out_cell', label: 'Body-weight workout', category: 'fitness', icon: '💪', durationMinutes: 40, effects: { perMinute: { energy: -0.25, hygiene: -0.4 }, fitness: 1, skills: { fitness: 20 }, stress: -12, custom: [cx('health:workout', { minutes: 40, kind: 'bodyweight' })] }, autonomyWeight: 0.7, group: 'Custody' }),
+    ],
+  }),
+  def({
+    id: 'police_desk', name: 'Front desk', category: 'commercial', icon: '👮', basePrice: 15000, description: 'Bulletproof glass, a sign-in clipboard, and a wall of most-wanted flyers.',
+    rooms: ['lobby'], tags: ['legal', 'police'], durabilityUses: 500000,
+    interactions: [
+      act({ id: 'file_report', label: 'File a police report', category: 'legal', icon: '📝', durationMinutes: 45, effects: { stress: 6, custom: [cx('legal:report', { kind: 'crime' })] }, autonomyWeight: 0.4, llm: 'narrate', group: 'Police' }),
+      act({ id: 'report_lost', label: 'Report lost property', category: 'legal', icon: '🎒', durationMinutes: 25, effects: { custom: [cx('legal:report', { kind: 'lost_property' })] }, autonomyWeight: 0.2, group: 'Police' }),
+      act({ id: 'ask_about_case', label: 'Ask about your case', category: 'legal', icon: '❓', durationMinutes: 20, effects: { needs: { social: 4 }, stress: 4 }, autonomyWeight: 0.2, llm: 'narrate', group: 'Police' }),
+      act({ id: 'pay_fine_here', label: 'Pay a fine', category: 'legal', icon: '💵', durationMinutes: 15, effects: { custom: [cx('legal:pay_fine', {})] }, autonomyWeight: 0.5, group: 'Police' }),
+    ],
+  }),
+  def({
+    id: 'fire_engine', name: 'Fire engine', category: 'vehicle', icon: '🚒', basePrice: 650000, description: 'A pumper backed into the bay, gear hung in numbered slots beside it.',
+    rooms: ['bay'], tags: ['emergency', 'public'], durabilityUses: 1000000,
+    interactions: [
+      act({ id: 'tour_station', label: 'Take the station tour', category: 'entertainment', icon: '🚒', durationMinutes: 30, effects: { needs: { fun: 18, social: 10 }, skills: { parenting: 8 }, moodlets: [mood('playful', 'Sat in a fire engine', 6, 480)] }, autonomyWeight: 0.2, llm: 'narrate', group: 'Station' }),
+      act({ id: 'car_seat_check', label: 'Get your car seat checked', category: 'family', icon: '👶', durationMinutes: 25, effects: { skills: { parenting: 16 }, moodlets: [mood('relaxed', 'Car seat installed right', 5, 720)] }, minStage: YA, autonomyWeight: 0.15, group: 'Station' }),
+      act({ id: 'blood_pressure_check', label: 'Get a blood pressure check', category: 'health', icon: '🩺', durationMinutes: 15, effects: { custom: [cx('health:checkup', { kind: 'vitals' })] }, autonomyWeight: 0.15, group: 'Station' }),
+    ],
+  }),
+  def({
+    id: 'mailbox', name: 'Mailbox', category: 'outdoor', icon: '📬', basePrice: 90, description: 'A dented aluminum box on a leaning post, flag stuck halfway up.',
+    rooms: ['curb'], tags: ['mail', 'essential'], durabilityUses: 50000,
+    interactions: [
+      act({ id: 'check_mail', label: 'Check the mail', category: 'chores', icon: '📬', durationMinutes: 4, effects: { custom: [cx('amenity:check_mail', {})] }, autonomyWeight: 1.5, group: 'Mail' }),
+      act({ id: 'send_mail', label: 'Put out the outgoing mail', category: 'chores', icon: '✉️', durationMinutes: 3, effects: { custom: [cx('amenity:send_mail', {})] }, autonomyWeight: 0.4, group: 'Mail' }),
+    ],
+  }),
+  def({
+    id: 'post_counter', name: 'Post office counter', category: 'commercial', icon: '📮', basePrice: 11000, description: 'A scale, a roll of tape for sale, and a line that never gets shorter.',
+    rooms: ['lobby'], tags: ['mail', 'service'], durabilityUses: 300000,
+    interactions: [
+      act({ id: 'ship_package', label: 'Ship a package', category: 'chores', icon: '📦', durationMinutes: 25, cost: 12, effects: { needs: { comfort: -6 }, custom: [cx('amenity:ship_package', {})] }, autonomyWeight: 0.4, group: 'Post Office' }),
+      act({ id: 'buy_stamps', label: 'Buy stamps', category: 'shop', icon: '🏷️', durationMinutes: 12, cost: 15, effects: { custom: [cx('amenity:send_mail', {})] }, autonomyWeight: 0.2, group: 'Post Office' }),
+      act({ id: 'apply_passport', label: 'Apply for a passport', category: 'civic', icon: '🛂', durationMinutes: 45, cost: 165, effects: { stress: 6, custom: [cx('legal:file', { form: 'passport' })], moodlets: [mood('hopeful', 'Passport on the way', 6, 1440)] }, minStage: TEEN, autonomyWeight: 0.15, group: 'Post Office' }),
+      act({ id: 'pickup_held_mail', label: 'Pick up held mail', category: 'chores', icon: '📬', durationMinutes: 15, effects: { custom: [cx('amenity:check_mail', {})] }, autonomyWeight: 0.2, group: 'Post Office' }),
+    ],
+  }),
+  def({
+    id: 'dmv_window', name: 'DMV window', category: 'commercial', icon: '🪪', basePrice: 13000, description: 'Window 7. A number board, a camera on a swing arm, a chair with a blue backdrop.',
+    rooms: ['lobby'], tags: ['legal', 'dmv', 'service'], durabilityUses: 500000,
+    interactions: [
+      act({ id: 'take_number', label: 'Take a number and wait', category: 'legal', icon: '🎟️', durationMinutes: 55, effects: { perMinute: { comfort: -0.14, fun: -0.08 }, stress: 12, moodlets: [mood('bored', 'DMV waiting room', -8, 240)] }, autonomyWeight: 0.6, group: 'DMV' }),
+      act({ id: 'renew_license', label: 'Renew your license', category: 'legal', icon: '🪪', durationMinutes: 25, cost: 33, effects: { custom: [cx('legal:renew_license', {})], moodlets: [mood('relaxed', 'License renewed', 4, 720)] }, minStage: TEEN, autonomyWeight: 0.5, group: 'DMV' }),
+      act({ id: 'license_test', label: 'Take the driving test', category: 'legal', icon: '🚗', durationMinutes: 60, cost: 25, effects: { stress: 18, skills: { driving: 20 }, custom: [cx('legal:license_test', {})] }, minStage: TEEN, autonomyWeight: 0.4, llm: 'narrate', group: 'DMV' }),
+      act({ id: 'register_vehicle', label: 'Register a vehicle', category: 'legal', icon: '📋', durationMinutes: 30, cost: 75, effects: { custom: [cx('legal:register_vehicle', {})] }, minStage: TEEN, autonomyWeight: 0.4, group: 'DMV' }),
+      act({ id: 'real_id', label: 'Upgrade to a REAL ID', category: 'legal', icon: '⭐', durationMinutes: 40, cost: 45, effects: { custom: [cx('legal:real_id', {})] }, minStage: TEEN, autonomyWeight: 0.15, group: 'DMV' }),
+      act({ id: 'voter_reg', label: 'Register to vote', category: 'civic', icon: '🗳️', durationMinutes: 12, effects: { custom: [cx('legal:file', { form: 'voter_registration' })], moodlets: [mood('proud', 'Registered to vote', 5, 1440)] }, minStage: TEEN, autonomyWeight: 0.2, group: 'DMV' }),
+    ],
+  }),
+  def({
+    id: 'city_hall_desk', name: 'Clerk\'s window', category: 'commercial', icon: '🏛️', basePrice: 12000, description: 'A marble counter, a stack of forms in wire racks, and a stamp that lands hard.',
+    rooms: ['lobby'], tags: ['civic', 'service'], durabilityUses: 500000,
+    interactions: [
+      act({ id: 'marriage_license', label: 'Apply for a marriage license', category: 'family', icon: '💍', durationMinutes: 35, cost: 82, effects: { custom: [cx('legal:file', { form: 'marriage_license' })], moodlets: [mood('in_love', 'Marriage license in hand', 12, 2880)] }, minStage: YA, autonomyWeight: 0.2, llm: 'narrate', group: 'City Hall' }),
+      act({ id: 'permit', label: 'Pull a permit', category: 'civic', icon: '📄', durationMinutes: 40, cost: 120, effects: { custom: [cx('legal:file', { form: 'permit' })] }, minStage: YA, autonomyWeight: 0.15, group: 'City Hall' }),
+      act({ id: 'name_change', label: 'File a name change', category: 'civic', icon: '✍️', durationMinutes: 45, cost: 175, effects: { custom: [cx('legal:file', { form: 'name_change' })] }, minStage: YA, autonomyWeight: 0.1, llm: 'narrate', group: 'City Hall' }),
+      act({ id: 'apply_benefits', label: 'Apply for benefits', category: 'civic', icon: '🤝', durationMinutes: 60, effects: { stress: 10, custom: [cx('civic:benefits', { action: 'apply' })] }, minStage: YA, autonomyWeight: 0.3, llm: 'narrate', group: 'City Hall' }),
+      act({ id: 'pet_license', label: 'License your pet', category: 'pet', icon: '🐕', durationMinutes: 20, cost: 20, effects: { custom: [cx('pet:license', {})] }, autonomyWeight: 0.15, group: 'City Hall' }),
+      act({ id: 'complaint', label: 'File a complaint', category: 'civic', icon: '📢', durationMinutes: 25, effects: { needs: { fun: -4 }, custom: [cx('legal:file', { form: 'complaint' })] }, autonomyWeight: 0.1, llm: 'narrate', group: 'City Hall' }),
+    ],
+  }),
+  def({
+    id: 'lawyer_desk', name: 'Attorney\'s desk', category: 'office', icon: '⚖️', basePrice: 4200, description: 'Walnut, a wall of bound reporters behind it, a billable-hours clock running.',
+    rooms: ['office'], tags: ['legal', 'service'], durabilityUses: 200000,
+    interactions: [
+      act({ id: 'consult_lawyer', label: 'Consult a lawyer', category: 'legal', icon: '⚖️', durationMinutes: 60, cost: 285, effects: { stress: -10, skills: { law: 18 }, custom: [cx('legal:consult', { pro: 'lawyer' })], moodlets: [mood('relaxed', 'Someone\'s on your side', 6, 1440)] }, minStage: YA, autonomyWeight: 0.3, llm: 'narrate', group: 'Legal' }),
+      act({ id: 'retain_counsel', label: 'Retain counsel for your case', category: 'legal', icon: '📑', durationMinutes: 45, cost: 2500, effects: { custom: [cx('legal:consult', { pro: 'lawyer', retain: true })], moodlets: [mood('hopeful', 'Retained a lawyer', 8, 2880)] }, minStage: YA, autonomyWeight: 0.2, group: 'Legal' }),
+      act({ id: 'draft_will', label: 'Have a will drafted', category: 'legal', icon: '📜', durationMinutes: 75, cost: 650, effects: { custom: [cx('legal:file', { form: 'will' })], moodlets: [mood('relaxed', 'Affairs in order', 6, 4320)] }, minStage: YA, autonomyWeight: 0.1, group: 'Legal' }),
+      act({ id: 'small_claims_file', label: 'File in small claims', category: 'legal', icon: '📋', durationMinutes: 50, cost: 75, effects: { custom: [cx('legal:file', { form: 'small_claims' })] }, minStage: YA, autonomyWeight: 0.15, llm: 'narrate', group: 'Legal' }),
+    ],
+  }),
+  def({
+    id: 'accountant_desk', name: 'Accountant\'s desk', category: 'office', icon: '🧮', basePrice: 2600, description: 'Two monitors, a wall calendar circled in April, a bowl of butterscotch candies.',
+    rooms: ['office'], tags: ['finance', 'service'], durabilityUses: 200000,
+    interactions: [
+      act({ id: 'file_taxes_pro', label: 'Have your taxes done', category: 'finance', icon: '🧾', durationMinutes: 75, cost: 165, effects: { stress: -14, custom: [cx('finance:file_taxes', { assisted: true })], moodlets: [mood('relaxed', 'Taxes filed', 8, 2880)] }, minStage: YA, autonomyWeight: 0.4, group: 'Money' }),
+      act({ id: 'tax_advice', label: 'Ask about deductions', category: 'finance', icon: '💡', durationMinutes: 40, cost: 95, effects: { skills: { finance: 24 }, custom: [cx('finance:consult', { pro: 'accountant' })] }, minStage: YA, autonomyWeight: 0.15, llm: 'narrate', group: 'Money' }),
+      act({ id: 'financial_plan', label: 'Sit down with a financial advisor', category: 'finance', icon: '📈', durationMinutes: 60, cost: 200, effects: { skills: { finance: 32 }, custom: [cx('finance:consult', { pro: 'financial_advisor' })], moodlets: [mood('hopeful', 'A plan for the money', 7, 2880)] }, minStage: YA, autonomyWeight: 0.15, llm: 'narrate', group: 'Money' }),
+    ],
+  }),
+  def({
+    id: 'insurance_desk', name: 'Insurance agent\'s desk', category: 'office', icon: '🛡️', basePrice: 2200, description: 'Brochures fanned out, a laminated coverage chart, a candy dish.',
+    rooms: ['office'], tags: ['finance', 'service'], durabilityUses: 200000,
+    interactions: [
+      act({ id: 'get_quote', label: 'Get an insurance quote', category: 'finance', icon: '🧾', durationMinutes: 35, effects: { custom: [cx('finance:insurance', { action: 'quote', kind: 'auto' })] }, minStage: YA, autonomyWeight: 0.2, group: 'Insurance' }),
+      act({ id: 'buy_renters', label: 'Buy renters insurance', category: 'finance', icon: '🏠', durationMinutes: 30, effects: { custom: [cx('finance:insurance', { action: 'buy', kind: 'renters' })], moodlets: [mood('relaxed', 'Covered, at least', 4, 1440)] }, minStage: YA, autonomyWeight: 0.2, group: 'Insurance' }),
+      act({ id: 'buy_health_ins', label: 'Enroll in a health plan', category: 'health', icon: '🏥', durationMinutes: 50, effects: { custom: [cx('finance:insurance', { action: 'buy', kind: 'health' })] }, minStage: YA, autonomyWeight: 0.3, llm: 'narrate', group: 'Insurance' }),
+      act({ id: 'file_claim', label: 'File a claim', category: 'finance', icon: '📝', durationMinutes: 45, effects: { stress: 8, custom: [cx('finance:insurance', { action: 'claim', kind: 'auto' })] }, minStage: YA, autonomyWeight: 0.3, llm: 'narrate', group: 'Insurance' }),
+    ],
+  }),
+  def({
+    id: 'realtor_desk', name: 'Realtor\'s desk', category: 'office', icon: '🏘️', basePrice: 2800, description: 'Glossy listing sheets, a bowl of keys, a map of the metro with pins in it.',
+    rooms: ['office'], tags: ['property', 'service'], durabilityUses: 200000,
+    interactions: [
+      act({ id: 'browse_listings', label: 'Browse listings', category: 'shop', icon: '🏘️', durationMinutes: 40, effects: { needs: { fun: 10 }, custom: [cx('property:browse', {})] }, minStage: YA, autonomyWeight: 0.3, group: 'Housing' }),
+      act({ id: 'tour_place', label: 'Tour a place', category: 'shop', icon: '🚪', durationMinutes: 60, effects: { needs: { fun: 12, energy: -8 }, custom: [cx('property:tour', {})], moodlets: [mood('hopeful', 'Picturing yourself there', 6, 720)] }, minStage: YA, autonomyWeight: 0.3, llm: 'narrate', group: 'Housing' }),
+      act({ id: 'get_prequalified', label: 'Get pre-qualified for a mortgage', category: 'finance', icon: '🏦', durationMinutes: 50, effects: { custom: [cx('finance:consult', { pro: 'realtor' }), cx('property:prequalify', {})] }, minStage: YA, autonomyWeight: 0.2, group: 'Housing' }),
+      act({ id: 'list_home', label: 'List your home for sale', category: 'finance', icon: '🪧', durationMinutes: 60, effects: { custom: [cx('property:list_home', {})] }, minStage: YA, autonomyWeight: 0.1, group: 'Housing' }),
+    ],
+  }),
+  def({
+    id: 'storage_unit', name: 'Storage unit', category: 'commercial', icon: '📦', basePrice: 0, description: 'A roll-up door, a bare bulb, and everything you couldn\'t part with.',
+    rooms: ['units'], tags: ['storage', 'service'], durabilityUses: 500000,
+    interactions: [
+      act({ id: 'store_stuff', label: 'Store some things', category: 'chores', icon: '📦', durationMinutes: 45, effects: { needs: { energy: -14 }, custom: [cx('property:storage', { action: 'store' })] }, autonomyWeight: 0.2, group: 'Storage' }),
+      act({ id: 'retrieve_stuff', label: 'Dig something out', category: 'chores', icon: '🔦', durationMinutes: 30, effects: { needs: { energy: -10, hygiene: -8 }, custom: [cx('property:storage', { action: 'retrieve' })] }, autonomyWeight: 0.2, group: 'Storage' }),
+      act({ id: 'clear_unit', label: 'Finally clear it out', category: 'chores', icon: '🧹', durationMinutes: 180, effects: { needs: { energy: -35, hygiene: -25 }, stress: -14, custom: [cx('property:storage', { action: 'clear' })], moodlets: [mood('proud', 'Cleared the unit', 10, 2880)] }, autonomyWeight: 0.1, group: 'Storage' }),
+    ],
+  }),
+  def({
+    id: 'laundromat_washer', name: 'Coin washer', category: 'appliance', icon: '🌀', basePrice: 3200, description: 'A front-loader with a card reader bolted on and a "OUT OF ORDER" note peeling off.', requiresUtility: 'water',
+    rooms: ['floor'], tags: ['laundry', 'service'], durabilityUses: 100000, runningCostMonthly: 30,
+    interactions: [
+      act({ id: 'wash_load', label: 'Start a load', category: 'chores', icon: '🌀', durationMinutes: 35, cost: 3.5, effects: { custom: [cx('amenity:laundromat', { loads: 1 }), cx('chore:laundry', { loads: 1 })] }, requirements: [itemReq('laundry_detergent')], requiresState: { unoccupied: true, notBroken: true }, setsState: { occupied: true }, autonomyWeight: 0.8, group: 'Laundry' }),
+      act({ id: 'wait_wash', label: 'Wait out the cycle', category: 'needs', icon: '⏳', durationMinutes: 35, effects: { perMinute: { comfort: -0.04, fun: 0.08 } }, autonomyWeight: 0.4, group: 'Laundry' }),
+    ],
+  }),
+  def({
+    id: 'laundromat_dryer', name: 'Coin dryer', category: 'appliance', icon: '🔥', basePrice: 2800, description: 'A bank of dryers, one of them the good one everybody fights for.', requiresUtility: 'gas',
+    rooms: ['floor'], tags: ['laundry', 'service'], durabilityUses: 100000, runningCostMonthly: 34,
+    interactions: [
+      act({ id: 'dry_load', label: 'Dry a load', category: 'chores', icon: '🔥', durationMinutes: 45, cost: 3, effects: { custom: [cx('amenity:laundromat', { loads: 1, dry: true }), cx('chore:laundry', { loads: 1, dry: true })] }, requiresState: { unoccupied: true, notBroken: true }, setsState: { occupied: true }, autonomyWeight: 0.8, group: 'Laundry' }),
+      act({ id: 'fold_here', label: 'Fold on the table', category: 'chores', icon: '🧺', durationMinutes: 20, effects: { needs: { energy: -5, comfort: 4 }, custom: [cx('chore:laundry', { loads: 0, fold: true })], moodlets: [mood('proud', 'Everything folded', 3, 480)] }, autonomyWeight: 0.5, group: 'Laundry' }),
+    ],
+  }),
+  def({
+    id: 'thrift_rack', name: 'Thrift rack', category: 'commercial', icon: '👕', basePrice: 600, description: 'Wheeled racks sorted loosely by color, a rack of belts at the end.',
+    rooms: ['floor'], tags: ['shop', 'clothing', 'thrift'], durabilityUses: 100000,
+    interactions: [
+      act({ id: 'thrift_hunt', label: 'Dig through the racks', category: 'shop', icon: '🔍', durationMinutes: 45, effects: { needs: { fun: 18, energy: -8 }, custom: [cx('shop:browse', { kind: 'thrift' })] }, outcomes: { outcomes: [{ weight: 6, label: 'Nothing today', effects: {} }, { weight: 5, label: 'Found something good', effects: { items: [{ op: 'gain', itemId: 'outfit_casual', qty: 1 }], money: { amount: -9, memo: 'Thrift find', category: 'shop' }, moodlets: [mood('proud', 'Thrift score', 6, 720)] } }, { weight: 2, label: 'Found something great', effects: { items: [{ op: 'gain', itemId: 'outfit_formal', qty: 1 }], money: { amount: -18, memo: 'Thrift score', category: 'shop' }, moodlets: [mood('proud', 'Incredible thrift score', 10, 1440)] } }] }, satisfies: ['fun'], autonomyWeight: 0.4, llm: 'narrate', group: 'Thrift' }),
+      act({ id: 'donate_clothes', label: 'Drop off a donation', category: 'civic', icon: '📦', durationMinutes: 12, effects: { custom: [cx('civic:donate', { kind: 'goods' })], moodlets: [mood('proud', 'Donated a bag', 4, 480)] }, autonomyWeight: 0.3, group: 'Thrift' }),
+      act({ id: 'sell_thrift', label: 'Sell some things', category: 'finance', icon: '💵', durationMinutes: 25, effects: { custom: [cx('finance:sell_item', {})] }, autonomyWeight: 0.2, group: 'Thrift' }),
+    ],
+  }),
+  def({
+    id: 'clothing_rack', name: 'Clothing rack', category: 'commercial', icon: '👗', basePrice: 900, description: 'Chrome racks under bright light, sizes fanned out on plastic hangers.',
+    rooms: ['floor'], tags: ['shop', 'clothing'], durabilityUses: 100000,
+    interactions: [
+      act({ id: 'browse_clothes', label: 'Browse the racks', category: 'shop', icon: '👗', durationMinutes: 25, effects: { needs: { fun: 12 }, custom: [cx('shop:browse', { kind: 'clothing' })] }, autonomyWeight: 0.4, group: 'Shop' }),
+      act({ id: 'buy_outfit', label: 'Buy an outfit', category: 'shop', icon: '🛍️', durationMinutes: 20, cost: 62, effects: { items: [{ op: 'gain', itemId: 'outfit_casual', qty: 1 }], needs: { fun: 12 }, moodlets: [mood('confident', 'New clothes', 6, 1440)] }, autonomyWeight: 0.3, group: 'Shop' }),
+      act({ id: 'buy_business', label: 'Buy something for interviews', category: 'shop', icon: '👔', durationMinutes: 30, cost: 140, effects: { items: [{ op: 'gain', itemId: 'outfit_business', qty: 1 }], moodlets: [mood('confident', 'Ready for the interview', 7, 2880)] }, minStage: TEEN, autonomyWeight: 0.2, group: 'Shop' }),
+    ],
+  }),
+  def({
+    id: 'fitting_room', name: 'Fitting room', category: 'commercial', icon: '🚪', basePrice: 3500, description: 'A louvered door, a three-way mirror, and lighting nobody looks good under.',
+    rooms: ['floor'], tags: ['shop', 'clothing'], durabilityUses: 200000,
+    interactions: [
+      act({ id: 'try_on', label: 'Try things on', category: 'shop', icon: '🪞', durationMinutes: 20, effects: { needs: { fun: 8, energy: -4 }, custom: [cx('shop:try_on', {})] }, outcomes: { outcomes: [{ weight: 6, label: 'It fits perfectly', effects: { moodlets: [mood('confident', 'It fits', 7, 720)] } }, { weight: 4, label: 'Not quite right', effects: { moodlets: [mood('sad', 'Nothing fit right', -4, 240)] } }] }, requiresState: { unoccupied: true }, setsState: { occupied: true }, autonomyWeight: 0.3, llm: 'narrate', group: 'Shop' }),
+    ],
+  }),
+  def({
+    id: 'electronics_display', name: 'Electronics display', category: 'commercial', icon: '📱', basePrice: 8000, description: 'A wall of TVs playing the same demo reel, phones tethered to their stands.', requiresUtility: 'electric',
+    rooms: ['floor'], tags: ['shop', 'electronics'], durabilityUses: 200000, runningCostMonthly: 60,
+    interactions: [
+      act({ id: 'browse_electronics', label: 'Browse the electronics', category: 'shop', icon: '📱', durationMinutes: 25, effects: { needs: { fun: 14 }, custom: [cx('shop:browse', { kind: 'electronics' })] }, autonomyWeight: 0.4, group: 'Shop' }),
+      act({ id: 'play_demo', label: 'Play the demo unit', category: 'entertainment', icon: '🎮', durationMinutes: 15, effects: { needs: { fun: 16 }, skills: { gaming: 8 } }, autonomyWeight: 0.3, group: 'Shop' }),
+      act({ id: 'ask_specs', label: 'Ask an associate about specs', category: 'social', icon: '💬', durationMinutes: 12, effects: { needs: { social: 8 }, custom: [cx('shop:ask_staff', {})] }, autonomyWeight: 0.2, llm: 'narrate', group: 'Shop' }),
+      act({ id: 'buy_charger', label: 'Buy a phone charger', category: 'shop', icon: '🔌', durationMinutes: 10, cost: 24, effects: { items: [{ op: 'gain', itemId: 'phone_charger', qty: 1 }] }, autonomyWeight: 0.3, group: 'Shop' }),
+    ],
+  }),
+  def({
+    id: 'furniture_showroom', name: 'Showroom floor', category: 'commercial', icon: '🛋️', basePrice: 15000, description: 'Staged living rooms you can sit in, price tags dangling from every arm.',
+    rooms: ['floor'], tags: ['shop', 'furniture'], durabilityUses: 300000,
+    interactions: [
+      act({ id: 'browse_furniture', label: 'Walk the showroom', category: 'shop', icon: '🛋️', durationMinutes: 40, effects: { needs: { fun: 14, energy: -8 }, custom: [cx('shop:browse', { kind: 'furniture' })] }, autonomyWeight: 0.3, group: 'Shop' }),
+      act({ id: 'test_couch', label: 'Sit on every couch', category: 'entertainment', icon: '🪑', durationMinutes: 20, effects: { needs: { comfort: 16, fun: 10, energy: 6 } }, satisfies: ['comfort'], autonomyWeight: 0.4, group: 'Shop' }),
+      act({ id: 'measure_up', label: 'Check if it fits your place', category: 'shop', icon: '📏', durationMinutes: 15, effects: { skills: { handiness: 8 } }, autonomyWeight: 0.15, group: 'Shop' }),
+    ],
+  }),
+  def({
+    id: 'hardware_aisle', name: 'Hardware aisle', category: 'commercial', icon: '🔨', basePrice: 5000, description: 'Bins of fasteners by the pound, paint chips, and a key-cutting machine.',
+    rooms: ['floor'], tags: ['shop', 'hardware'], durabilityUses: 300000,
+    interactions: [
+      act({ id: 'browse_hardware', label: 'Browse the aisles', category: 'shop', icon: '🔨', durationMinutes: 25, effects: { needs: { fun: 10 }, skills: { handiness: 10 }, custom: [cx('shop:browse', { kind: 'hardware' })] }, autonomyWeight: 0.3, group: 'Shop' }),
+      act({ id: 'buy_tools', label: 'Buy a tool kit', category: 'shop', icon: '🧰', durationMinutes: 20, cost: 72, effects: { items: [{ op: 'gain', itemId: 'tool_kit', qty: 1 }], moodlets: [mood('confident', 'Properly equipped', 5, 1440)] }, autonomyWeight: 0.2, group: 'Shop' }),
+      act({ id: 'ask_how_to', label: 'Ask how to fix it', category: 'social', icon: '💬', durationMinutes: 15, effects: { skills: { handiness: 24 }, needs: { social: 8 }, custom: [cx('shop:ask_staff', {})] }, autonomyWeight: 0.3, llm: 'narrate', group: 'Shop' }),
+      act({ id: 'cut_key', label: 'Get a key cut', category: 'shop', icon: '🔑', durationMinutes: 12, cost: 4, effects: {}, autonomyWeight: 0.15, group: 'Shop' }),
+      act({ id: 'buy_supplies', label: 'Buy cleaning supplies', category: 'shop', icon: '🧴', durationMinutes: 12, cost: 22, effects: { items: [{ op: 'gain', itemId: 'cleaning_supplies', qty: 2 }, { op: 'gain', itemId: 'lightbulb', qty: 2 }] }, autonomyWeight: 0.3, group: 'Shop' }),
+    ],
+  }),
+  def({
+    id: 'bookstore_shelf', name: 'Bookstore shelf', category: 'commercial', icon: '📚', basePrice: 2200, description: 'Face-out staff picks with handwritten cards taped beneath them.',
+    rooms: ['floor'], tags: ['shop', 'books'], durabilityUses: 300000, ambient: { comfort: 1, fun: 1 },
+    interactions: [
+      act({ id: 'browse_books', label: 'Browse the shelves', category: 'shop', icon: '📚', durationMinutes: 30, effects: { needs: { fun: 16, comfort: 8 }, stress: -12, custom: [cx('shop:browse', { kind: 'books' })] }, satisfies: ['fun'], autonomyWeight: 0.5, group: 'Books' }),
+      act({ id: 'buy_book', label: 'Buy a book', category: 'shop', icon: '📖', durationMinutes: 12, cost: 19, effects: { items: [{ op: 'gain', itemId: 'book_novel', qty: 1 }], moodlets: [mood('hopeful', 'A new book', 5, 720)] }, autonomyWeight: 0.3, group: 'Books' }),
+      act({ id: 'read_in_store', label: 'Read a few chapters standing up', category: 'hobby', icon: '👓', durationMinutes: 35, effects: { perMinute: { fun: 0.28 }, skills: { logic: 14 }, stress: -14 }, autonomyWeight: 0.3, group: 'Books' }),
+      act({ id: 'author_event', label: 'Catch the author reading', category: 'entertainment', icon: '🎤', durationMinutes: 60, effects: { needs: { fun: 22, social: 16 }, skills: { writing: 20 }, moodlets: [mood('inspired', 'Heard a writer read', 8, 720)] }, minStage: TEEN, autonomyWeight: 0.2, llm: 'narrate', group: 'Books' }),
+    ],
+  }),
+  def({
+    id: 'liquor_shelf', name: 'Liquor shelf', category: 'commercial', icon: '🥃', basePrice: 3000, description: 'Backlit bottles arranged by price, a locked case at the top.',
+    rooms: ['floor'], tags: ['shop', 'liquor'], durabilityUses: 200000,
+    interactions: [
+      act({ id: 'buy_beer', label: 'Buy a six-pack', category: 'shop', icon: '🍺', durationMinutes: 10, cost: 13, effects: { items: [{ op: 'gain', itemId: 'beer', qty: 6 }] }, minStage: YA, autonomyWeight: 0.3, group: 'Liquor' }),
+      act({ id: 'buy_wine', label: 'Buy a bottle of wine', category: 'shop', icon: '🍷', durationMinutes: 12, cost: 18, effects: { items: [{ op: 'gain', itemId: 'wine', qty: 1 }] }, minStage: YA, autonomyWeight: 0.25, group: 'Liquor' }),
+      act({ id: 'buy_liquor', label: 'Buy a bottle of liquor', category: 'shop', icon: '🥃', durationMinutes: 12, cost: 27, effects: { items: [{ op: 'gain', itemId: 'liquor', qty: 1 }] }, minStage: YA, autonomyWeight: 0.2, group: 'Liquor' }),
+      act({ id: 'ask_pairing', label: 'Ask what goes with dinner', category: 'social', icon: '💬', durationMinutes: 10, effects: { skills: { mixology: 12 }, needs: { social: 6 }, custom: [cx('shop:ask_staff', {})] }, minStage: YA, autonomyWeight: 0.1, llm: 'narrate', group: 'Liquor' }),
+    ],
+  }),
+  def({
+    id: 'dispensary_counter', name: 'Dispensary counter', category: 'commercial', icon: '🌿', basePrice: 9000, description: 'A glass case, a menu on a screen, and an ID scanner at the door.',
+    rooms: ['floor'], tags: ['shop', 'cannabis'], durabilityUses: 200000,
+    interactions: [
+      act({ id: 'buy_flower', label: 'Buy an eighth', category: 'shop', icon: '🌿', durationMinutes: 15, cost: 38, effects: { items: [{ op: 'gain', itemId: 'cannabis_flower', qty: 1 }], custom: [cx('shop:order', { what: 'cannabis' })] }, minStage: YA, autonomyWeight: 0.2, group: 'Dispensary' }),
+      act({ id: 'ask_budtender', label: 'Ask the budtender for a recommendation', category: 'social', icon: '💬', durationMinutes: 12, effects: { needs: { social: 8 }, custom: [cx('shop:ask_staff', {})] }, minStage: YA, autonomyWeight: 0.1, llm: 'narrate', group: 'Dispensary' }),
+    ],
+  }),
+  def({
+    id: 'florist_counter', name: 'Florist\'s counter', category: 'commercial', icon: '🌸', basePrice: 5500, description: 'A wet workbench strewn with stems, ribbon spools, and clipped greenery.',
+    rooms: ['floor'], tags: ['shop', 'gift'], durabilityUses: 200000,
+    interactions: [
+      act({ id: 'order_bouquet', label: 'Order a bouquet', category: 'shop', icon: '💐', durationMinutes: 20, cost: 55, effects: { items: [{ op: 'gain', itemId: 'gift_flowers', qty: 1 }], custom: [cx('shop:order', { what: 'flowers' })], moodlets: [mood('hopeful', 'Flowers for someone', 6, 480)] }, autonomyWeight: 0.2, group: 'Florist' }),
+      act({ id: 'order_sympathy', label: 'Order sympathy flowers', category: 'shop', icon: '🕊️', durationMinutes: 25, cost: 85, effects: { items: [{ op: 'gain', itemId: 'gift_flowers', qty: 1 }], moodlets: [mood('grieving', 'Sending flowers', -4, 720)] }, minStage: TEEN, autonomyWeight: 0.1, llm: 'narrate', group: 'Florist' }),
+      act({ id: 'flower_class', label: 'Take an arranging class', category: 'hobby', icon: '🎨', durationMinutes: 90, cost: 65, effects: { needs: { fun: 24, social: 18 }, skills: { creativity: 34 }, stress: -16, moodlets: [mood('inspired', 'Made something beautiful', 8, 720)] }, minStage: TEEN, autonomyWeight: 0.1, group: 'Florist' }),
+    ],
+  }),
+  def({
+    id: 'butcher_counter', name: 'Butcher counter', category: 'commercial', icon: '🥩', basePrice: 14000, description: 'A refrigerated case of cuts on paper, a scale, and a chalkboard of specials.', requiresUtility: 'electric',
+    rooms: ['floor'], tags: ['shop', 'grocery', 'meat'], durabilityUses: 200000, runningCostMonthly: 110,
+    interactions: [
+      act({ id: 'buy_meat', label: 'Buy meat for the week', category: 'shop', icon: '🥩', durationMinutes: 18, cost: 42, effects: { items: [{ op: 'gain', itemId: 'beef', qty: 1 }, { op: 'gain', itemId: 'chicken', qty: 2 }, { op: 'gain', itemId: 'ground_beef', qty: 1 }], custom: [cx('shop:order', { what: 'meat' })] }, autonomyWeight: 0.4, group: 'Butcher' }),
+      act({ id: 'ask_cut', label: 'Ask what to do with a cut', category: 'social', icon: '💬', durationMinutes: 10, effects: { skills: { cooking: 18 }, needs: { social: 6 }, custom: [cx('shop:ask_staff', {})] }, autonomyWeight: 0.2, llm: 'narrate', group: 'Butcher' }),
+      act({ id: 'special_order', label: 'Put in a special order', category: 'shop', icon: '📋', durationMinutes: 15, cost: 78, effects: { items: [{ op: 'gain', itemId: 'beef', qty: 3 }], moodlets: [mood('hopeful', 'Something good for Sunday', 5, 1440)] }, autonomyWeight: 0.1, group: 'Butcher' }),
+    ],
+  }),
+);
+
+// =====================================================================================
+export const OBJECTS: Record<string, ObjectDef> = Object.fromEntries(ALL.map((o) => [o.id, o]));
+export const OBJECT_IDS = Object.keys(OBJECTS);
