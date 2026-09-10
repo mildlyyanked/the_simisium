@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "sim": "npx tsx scripts/headless.ts"
+    "sim": "SIM_DAYS=${SIM_DAYS:-7} vitest run scripts/headless.test.ts --reporter=basic",
+    "shots": "node scripts/screenshot.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
