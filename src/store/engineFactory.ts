@@ -9,6 +9,7 @@ import type { WorldState } from '@engine/core/types';
 import type { HolidayResolver } from '@engine/core/clock';
 import { CONTENT } from '@engine/content';
 import { SYSTEMS } from '@engine/systems';
+import { holidayResolver } from '@engine/systems/calendar';
 import { createLLMService } from '@engine/llm';
 import { createPlacesProvider } from '@engine/places';
 import type { PlacesProvider } from '@engine/places/types';
@@ -20,8 +21,7 @@ export interface EngineBuildResult {
   warnings: string[];
 }
 
-// TODO integrator: replace with `import { holidayResolver } from '@engine/systems/calendar'` once the calendar system lands.
-const resolver: HolidayResolver = () => [];
+const resolver: HolidayResolver = holidayResolver;
 
 export function buildLLM(onUsage?: (u: LLMUsage) => void): { llm?: LLMService; warning?: string } {
   const s = useSettings.getState();

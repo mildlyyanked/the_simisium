@@ -107,7 +107,7 @@ export class FallbackLLMService implements LLMService {
             : grumpy
               ? rng.pick(['Hey.', "Yeah, hi.", `${name}. What's up.`])
               : stage === 'stranger'
-                ? rng.pick([`Hi there. ${warm ? 'How's it going?' : ''}`.trim(), `Hey. ${rng.pick(['Do I know you?', 'Nice out today, right?', "What's up?"])}`])
+                ? rng.pick([`Hi there. ${warm ? "How's it going?" : ''}`.trim(), `Hey. ${rng.pick(['Do I know you?', 'Nice out today, right?', "What's up?"])}`])
                 : rng.pick([`Hey ${name}! Good to see you.`, `${name}! What's going on?`, `Oh hey, ${name}. How've you been?`]),
         );
         emotion = grumpy ? 'bored' : 'happy';

@@ -41,6 +41,7 @@ export interface BioTokens {
 export const DEPTH_BY_CATEGORY: Record<BioCategory, number> = {
   origin: 5,
   daily_life: 8,
+  childhood: 18,
   hobby: 10,
   opinion: 15,
   career: 15,
