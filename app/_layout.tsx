@@ -42,7 +42,7 @@ export default function RootLayout(): React.ReactElement {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <SafeAreaProvider>
-        <StatusBar style="light" backgroundColor={theme.colors.background} />
+        <StatusBar style="light" />
         <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
           {ready ? (
             <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.background }, animation: 'fade' }}>

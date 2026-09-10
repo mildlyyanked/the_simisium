@@ -64,7 +64,7 @@ describe.skipIf(!DAYS)('headless simulation', () => {
       const s = state.sims[id];
       const cash = s.finance.accounts.filter((a) => a.kind !== 'credit_card').reduce((x, a) => x + a.balance, 0);
       const debt = s.finance.accounts.filter((a) => a.kind === 'credit_card').reduce((x, a) => x + a.balance, 0) + s.finance.loans.reduce((x, l) => x + l.balance, 0);
-      lines.push(`- ${s.identity.firstName}: alive=${s.body.alive} mood=${s.mind.mood.toFixed(0)} stress=${s.mind.stress.toFixed(0)} health=${s.body.health.toFixed(0)} needs=${Object.entries(s.needs).map(([k, v]) => `${k[0]}${v.toFixed(0)}`).join(' ')} cash=${formatMoney(cash)} debt=${formatMoney(debt)} job=${s.career.job?.title ?? '—'} perf=${s.career.job?.performance.toFixed(0) ?? '—'} skills=${Object.entries(s.skills).filter(([, v]) => v.level > 0).map(([k, v]) => `${k}:${v.level}`).join(',') || '—'} rels=${Object.keys(s.relationships).length}`);
+      lines.push(`- ${s.identity.firstName}: alive=${s.body.alive} mood=${s.mind.mood.toFixed(0)} stress=${s.mind.stress.toFixed(0)} health=${s.body.health.toFixed(0)} needs=${Object.entries(s.needs).map(([k, v]) => `${k[0]}${v.toFixed(0)}`).join(' ')} cash=${formatMoney(cash)} debt=${formatMoney(debt)} job=${s.career.job?.title ?? '—'} perf=${s.career.job?.performance.toFixed(0) ?? '—'} skills=${Object.entries(s.skills).filter(([, v]) => v.level > 0).map(([k, v]) => `${k}:${v.level}`).join(',') || '—'} rels=${Object.keys(s.relationships).length} moodlets=${s.mind.moodlets.map((m) => `${m.label}(${m.intensity})`).join(',')}`);
     }
     const top = Object.entries(events).sort((a, b) => b[1] - a[1]).slice(0, 25);
     lines.push('Events: ' + top.map(([k, v]) => `${k}=${v}`).join(' '));

@@ -444,12 +444,15 @@ export function computeMood(ctx: SystemContext, sim: Sim): void {
   const now = ctx.state.time.minute;
   sim.mind.moodlets = sim.mind.moodlets.filter((m) => m.expiresAt > now && Number.isFinite(m.intensity));
   let mood = 0;
+  let moodletSum = 0;
   let strongest: { emotion: EmotionId; abs: number } | undefined;
   for (const m of sim.mind.moodlets) {
-    mood += m.intensity;
+    moodletSum += m.intensity;
     const abs = Math.abs(m.intensity);
     if (!strongest || abs > strongest.abs) strongest = { emotion: m.emotion, abs };
   }
+  // many small moodlets stack, but with diminishing returns so one bad week doesn't pin mood to -100
+  mood += 45 * Math.tanh(moodletSum / 45);
   for (const k of NEED_IDS) {
     const v = sim.needs[k];
     if (v < 50) mood -= (50 - v) / 5;
@@ -766,7 +769,11 @@ export const needsSystem: System = {
       if (elapsed < interval) continue;
       sim.flags['needs:last'] = now;
       if (sim.lod === 'far') processFar(ctx, sim);
-      else processSim(ctx, sim, clamp(elapsed, 1, 3 * DAY));
+      else {
+        // a sim that just came into focus (far → near/full) must not pay days of decay at once
+        const cap = sim.lod === 'full' ? 30 : 3 * HOUR;
+        processSim(ctx, sim, clamp(elapsed, 1, cap));
+      }
     }
   },
 

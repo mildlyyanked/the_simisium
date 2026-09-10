@@ -11,6 +11,7 @@ import { ageAt, isoDateAt } from '../core/clock';
 import type { GameEvent } from '../core/events';
 import { newPetId } from '../core/ids';
 import type { ActionResult, System, SystemContext } from '../core/systems';
+import { transact } from '../core/effects';
 import type { ActionDef, Pet, PetNeedId, PetSpecies, Requirement, Sim, SimId, VenueId } from '../core/types';
 import { clamp, clamp100, DAY, HOUR, round2 } from '../core/util';
 import type { PetBreedDef } from '../content/types';
@@ -118,10 +119,46 @@ function decayPet(ctx: SystemContext, pet: Pet, dtMinutes: number): void {
     }
   }
   if (pet.species === 'cat' && atHome && pet.needs.hygiene < 25 && ctx.rng.chance(0.05 * hours) && venue) ctx.applyEffects(hh?.simIds[0] ?? ctx.state.player.activeSimId, { venue: [{ venueId: venue.id, cleanliness: -2 }] }, 'pet:litter');
+  // autonomous household members (NPCs, or controlled sims on autonomy) look after the pet when home & awake
+  if (atHome && hh) {
+    const carers = ownersAt(ctx, pet, pet.location.venueId).filter((s) => (!s.isPlayerControlled || s.flags.autonomy === true) && !(s.currentAction && /sleep/i.test(s.currentAction.label)) && s.lifeStage !== 'infant' && s.lifeStage !== 'toddler');
+    if (carers.length) {
+      const carer = carers[0];
+      if (pet.needs.thirst < 45) pet.needs.thirst = 100;
+      const food = FOOD_ITEM[pet.species];
+      if (pet.needs.hunger < 40) {
+        if (!food) pet.needs.hunger = clamp100(pet.needs.hunger + 45);
+        else if ((hh.pantry[food] ?? 0) > 0) {
+          if (ctx.rng.chance(1 / 7)) hh.pantry[food] -= 1; // a bag lasts about a week
+          if (hh.pantry[food] === 0) delete hh.pantry[food];
+          pet.needs.hunger = clamp100(pet.needs.hunger + 45);
+          pet.bonds[carer.id] = clamp100((pet.bonds[carer.id] ?? 0) + 1);
+        } else {
+          // out of food: an autonomous carer orders more (delivery) if they can afford it
+          const paid = transact(carer, -28, `${food.replace('_', ' ')} (delivery)`, ctx.state.time.minute, { category: 'pet', rng: ctx.rng });
+          if (paid.ok) {
+            hh.pantry[food] = (hh.pantry[food] ?? 0) + 2;
+            pet.needs.hunger = clamp100(pet.needs.hunger + 45);
+            if (householdControlled(ctx, pet)) ctx.log({ text: `${carer.identity.firstName} orders more ${food.replace('_', ' ')} — $28.`, kind: 'money', importance: 1 });
+          } else if (!pet.quirks.includes('__nofood') && householdControlled(ctx, pet)) {
+            pet.quirks.push('__nofood');
+            ctx.log({ text: `${carer.identity.firstName} goes to feed ${pet.name} and the bag is empty — and there's no money for more.`, kind: 'alert', importance: 2 });
+          }
+        }
+      }
+      if (pet.needs.hunger >= 40 && pet.quirks.includes('__nofood')) pet.quirks = pet.quirks.filter((q) => q !== '__nofood');
+      if (pet.needs.play < 35 && ctx.rng.chance(0.3)) { pet.needs.play = clamp100(pet.needs.play + 30); pet.needs.affection = clamp100(pet.needs.affection + 15); }
+      if (pet.needs.bladder < 30 && pet.species === 'dog' && ctx.rng.chance(0.5)) pet.needs.bladder = 100;
+    }
+  }
   for (const n of ['hunger', 'thirst'] as const) {
-    if (pet.needs[n] < 10 && !pet.quirks.includes(`__crit_${n}`)) {
+    const marker = `__crit_${n}`;
+    if (pet.needs[n] < 10 && !pet.quirks.includes(marker)) {
+      pet.quirks.push(marker);
       ctx.emit({ type: 'pet:need_critical', petId: pet.id, need: n });
       if (householdControlled(ctx, pet)) ctx.log({ text: `${pet.name} is ${n === 'hunger' ? 'starving' : 'desperately thirsty'}.`, kind: 'alert', importance: 2 });
+    } else if (pet.needs[n] >= 40 && pet.quirks.includes(marker)) {
+      pet.quirks = pet.quirks.filter((q) => q !== marker);
     }
   }
   // bonds: proximity to household members
@@ -331,8 +368,9 @@ function execute(ctx: SystemContext, simId: SimId, action: ActionDef, params: Re
     case 'feed': {
       const food = FOOD_ITEM[pet.species];
       if (food) {
-        if ((sim.inventory.consumables[food] ?? 0) > 0) sim.inventory.consumables[food] -= 1;
-        else if (hh && (hh.pantry[food] ?? 0) > 0) hh.pantry[food] -= 1;
+        const useUp = ctx.rng.chance(1 / 7);
+        if ((sim.inventory.consumables[food] ?? 0) > 0) { if (useUp) sim.inventory.consumables[food] -= 1; }
+        else if (hh && (hh.pantry[food] ?? 0) > 0) { if (useUp) hh.pantry[food] -= 1; }
         else return { ok: false, text: `You're out of ${food.replace('_', ' ')}.` };
         if (sim.inventory.consumables[food] === 0) delete sim.inventory.consumables[food];
         if (hh && hh.pantry[food] === 0) delete hh.pantry[food];

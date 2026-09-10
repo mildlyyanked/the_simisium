@@ -271,6 +271,15 @@ function levelForAge(rng: RNG, career: CareerDef, age: number): number {
   return target;
 }
 
+/** Sleep blocks that cross midnight are stored as two same-day spans (the schedule matcher is per-day). */
+export function pushSleep(sim: Sim, start: number, end: number, venueId: VenueId): void {
+  if (start < end) sim.schedule.push({ day: 'daily', start, end, kind: 'sleep', venueId, label: 'Sleep' });
+  else {
+    sim.schedule.push({ day: 'daily', start, end: 1440, kind: 'sleep', venueId, label: 'Sleep' });
+    sim.schedule.push({ day: 'daily', start: 0, end, kind: 'sleep', venueId, label: 'Sleep' });
+  }
+}
+
 // ---------------------------------------------------------------------------
 // NPC
 // ---------------------------------------------------------------------------
@@ -314,6 +323,7 @@ export function generateNpc(ctx: GenCtx, opts: NpcOpts): Sim {
     sim.career.job = job;
     sim.career.history.push({ title: job.title, employer: job.employerName, from: job.startedAt });
     sim.schedule.push(...workBlocks(job));
+    sim.flags.career_review_year = Math.floor((state.time.minute - job.startedAt) / (365 * 1440));
     if (venue && !venue.staffSimIds.includes(sim.id)) venue.staffSimIds.push(sim.id);
   } else if (age >= 65) {
     sim.career.retired = true;
@@ -327,7 +337,7 @@ export function generateNpc(ctx: GenCtx, opts: NpcOpts): Sim {
   // sleep block so autonomy knows when they are home
   const nightOwl = traits.includes('night_owl');
   const early = traits.includes('early_bird');
-  sim.schedule.push({ day: 'daily', start: nightOwl ? 60 : early ? 21 * 60 + 30 : 23 * 60, end: nightOwl ? 9 * 60 : early ? 5 * 60 + 30 : 7 * 60, kind: 'sleep', venueId: opts.homeVenueId ?? opts.venueId });
+  pushSleep(sim, nightOwl ? 60 : early ? 21 * 60 + 30 : 23 * 60, nightOwl ? 9 * 60 : early ? 5 * 60 + 30 : 7 * 60, opts.homeVenueId ?? opts.venueId);
   return sim;
 }
 
@@ -394,7 +404,7 @@ export function generatePlayerSim(ctx: GenCtx, spec: PlayerSimSpec, venueId: Ven
   ];
   sim.bio = { summary: spec.background?.trim() || `${spec.firstName} ${spec.lastName}, ${spec.age}, of ${state.region.name}.`, facts: facts.map((f, i) => ({ id: `pf_${i}`, ...f, revealedTo: [] })), generated: true, generatedBy: 'fallback', seed: `${spec.firstName}-${spec.lastName}-${spec.age}` };
   if (spec.aspiration) sim.aspirations.push({ id: shortId(rng, 'asp'), text: spec.aspiration, category: 'adventure', progress: 0, completed: false, milestones: [{ text: 'Take the first step', done: false }, { text: 'Keep at it', done: false }, { text: 'Get there', done: false }] });
-  sim.schedule.push({ day: 'daily', start: 23 * 60, end: 7 * 60, kind: 'sleep', venueId });
+  pushSleep(sim, 23 * 60, 7 * 60, venueId);
   return sim;
 }
 

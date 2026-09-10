@@ -725,7 +725,8 @@ function processShift(ctx: SystemContext, sim: Sim, job: Job, dt: number): void 
   if (!block) return;
   const mod = minuteOfDay(now);
   const state = shiftState(sim);
-  const controlled = isYou(ctx, sim);
+  // a controlled sim running on autonomy is treated like an NPC: presence at work is clocking in
+  const controlled = isYou(ctx, sim) && sim.flags.autonomy !== true;
   if (state === 'pending') {
     if (mod >= block.start && mod < block.start + dt) ctx.emit({ type: 'career:shift_start', simId: sim.id });
     if (mod < block.start) return;
@@ -738,7 +739,7 @@ function processShift(ctx: SystemContext, sim: Sim, job: Job, dt: number): void 
       return;
     }
     // NPC: if npcAI got them to work, clock them in; otherwise autopilot at shift end
-    if (atWorkplace(ctx, sim, job) && !sim.currentAction) {
+    if (atWorkplace(ctx, sim, job) && (!sim.currentAction || sim.currentAction.actionId.startsWith('npc:'))) {
       startWorking(ctx, sim, job, block);
       sim.currentAction = { actionId: 'career:work_shift', label: `Working (${job.title})`, startedAt: now, endsAt: today * DAY + block.end, interruptible: true };
       return;

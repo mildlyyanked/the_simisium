@@ -146,6 +146,23 @@ function activeBlock(ctx: SystemContext, sim: Sim, minute: number): RoutineBlock
   return best;
 }
 
+/** Minutes until the next work/school/childcare block begins (today or tomorrow), or Infinity. */
+export function minutesToNextObligation(ctx: SystemContext, sim: Sim, minute: number): number {
+  const mod = ((minute % DAY) + DAY) % DAY;
+  let best = Number.POSITIVE_INFINITY;
+  for (let dayOffset = 0; dayOffset < 2; dayOffset++) {
+    const wd = ((weekdayAt(ctx.state.epoch, minute + dayOffset * DAY)) as Weekday);
+    for (const b of sim.schedule) {
+      if (b.kind !== 'work' && b.kind !== 'school' && b.kind !== 'childcare') continue;
+      if (!blockMatchesDay(b, wd)) continue;
+      if (b.kind === 'work' && !sim.career.job && !sim.role?.venueId) continue;
+      const startAt = dayOffset * DAY + b.start - mod;
+      if (startAt > 0 && startAt < best) best = startAt;
+    }
+  }
+  return best;
+}
+
 /** Where a sim should be at `minute` per schedule; home when nothing is scheduled. */
 export function whereIs(ctx: SystemContext, sim: Sim, minute: number): VenueId | undefined {
   const home = ctx.query.homeOf(sim.id)?.id;
@@ -225,19 +242,43 @@ function traitBias(sim: Sim, a: ActionDef): number {
   return b;
 }
 
+let CURRENT_MOD = 0;
+function nightNow(sim: Sim, sleepStart: number): boolean {
+  void sim;
+  const m = CURRENT_MOD;
+  return m >= sleepStart - 60 || m < 5 * 60;
+}
+
+let CURRENT_STATE: import('../core/types').WorldState | undefined;
 function scoreAction(sim: Sim, a: ActionDef, atHome: boolean): number {
-  if (a.category === 'travel' || a.category === 'phone' || a.category === 'freeform' || a.category === 'system' || a.category === 'shop' || a.category === 'finance' || a.category === 'legal' || a.category === 'social' || a.category === 'romance' || a.category === 'family' || a.category === 'pet') return -1;
-  if (a.llm) return -1;
+  if (a.category === 'chores' && a.target?.kind === 'object' && CURRENT_STATE) {
+    const obj = CURRENT_STATE.objects[a.target.id as import('../core/types').ObjectId];
+    const dirty = obj?.state.dirty ?? 0;
+    if (dirty > 60) return (a.autonomyWeight ?? 0.3) + (dirty - 60) / 20 + (hasTrait(sim, 'neat') ? 0.8 : 0) - (hasTrait(sim, 'slob') ? 0.6 : 0);
+  }
+  if (a.category === 'travel' || a.category === 'freeform' || a.category === 'system' || a.category === 'shop' || a.category === 'finance' || a.category === 'legal' || a.category === 'romance' || a.category === 'family' || a.category === 'pet') return -1;
+  // phone/social object actions are fine for autonomy (scrolling, calling a friend, chatting at the counter); sim-targeted socials are not
+  if ((a.category === 'phone' || a.category === 'social') && !a.id.startsWith('obj:') && !a.id.startsWith('venue:')) return -1;
+  if (a.llm === 'adjudicate' || a.llm === 'converse') return -1;
   if (a.id.startsWith('social:') || a.id.startsWith('family:') || a.id.startsWith('pet:') || a.id.startsWith('lifeEvents:')) return -1;
   let s = a.autonomyWeight ?? 0.25;
-  for (const n of a.satisfies ?? []) {
-    const deficit = (100 - sim.needs[n]) / 100;
-    s += deficit * deficit * 2.2;
-    if (sim.needs[n] < 25) s += 1;
+  if (a.satisfies?.length) {
+    // a need-satisfying action is only attractive in proportion to the need
+    const worst = Math.min(...a.satisfies.map((n) => sim.needs[n]));
+    s *= worst > 75 ? 0.15 : worst > 55 ? 0.5 : 1;
+    for (const n of a.satisfies) {
+      const deficit = (100 - sim.needs[n]) / 100;
+      s += deficit * deficit * 2.2;
+      if (sim.needs[n] < 25) s += 1;
+    }
   }
   if (!a.satisfies?.length) {
     const eff = a.effects.needs ?? {};
     for (const [k, v] of Object.entries(eff)) if ((v ?? 0) > 0) s += ((100 - sim.needs[k as NeedId]) / 100) * 0.8;
+  }
+  if (a.durationMinutes >= 300 && a.satisfies?.includes('energy') && sim.needs.energy > 30) {
+    const [s0] = sleepWindow(sim);
+    return -1 + (nightNow(sim, s0) ? 2 : 0);
   }
   if (a.cost && a.cost.amount > 0) s -= atHome ? 0 : Math.min(0.8, a.cost.amount / 60);
   s += traitBias(sim, a);
@@ -245,7 +286,7 @@ function scoreAction(sim: Sim, a: ActionDef, atHome: boolean): number {
   return s;
 }
 
-function pickAction(ctx: SystemContext, sim: Sim, atHome: boolean): ActionDef | undefined {
+function pickAction(ctx: SystemContext, sim: Sim, atHome: boolean, need?: NeedId): ActionDef | undefined {
   let list: ReturnType<typeof availableActions>;
   try {
     list = availableActions(ctx, sim.id, []);
@@ -256,6 +297,7 @@ function pickAction(ctx: SystemContext, sim: Sim, atHome: boolean): ActionDef | 
   let bestScore = 0.45;
   for (const { action, available } of list) {
     if (!available) continue;
+    if (need && !action.satisfies?.includes(need)) continue;
     const s = scoreAction(sim, action, atHome) + ctx.rng.range(0, 0.35);
     if (s > bestScore) {
       bestScore = s;
@@ -271,7 +313,8 @@ function runAction(ctx: SystemContext, sim: Sim, a: ActionDef, atHome: boolean):
     const r = transact(sim, -a.cost.amount, a.cost.memo, now, { category: a.cost.category ?? 'venue', counterparty: a.cost.counterparty, venueId: sim.location.venueId, rng: ctx.rng, allowCredit: false });
     if (!r.ok) return;
   }
-  const dur = clamp(Math.round(a.durationMinutes), 1, 240);
+  const lead = minutesToNextObligation(ctx, sim, now) - 45;
+  const dur = clamp(Math.round(Math.min(a.durationMinutes, Number.isFinite(lead) ? Math.max(5, lead) : a.durationMinutes)), 1, 480);
   const objId = a.target?.kind === 'object' ? (a.target.id as import('../core/types').ObjectId) : undefined;
   const obj = objId ? ctx.state.objects[objId] : undefined;
   const sets = a.params?.setsState as { on?: boolean; occupied?: boolean } | undefined;
@@ -324,7 +367,7 @@ function completeAction(ctx: SystemContext, simId: SimId, actionId: string): voi
 function socialAutonomy(ctx: SystemContext, sim: Sim, present: Sim[]): void {
   const now = ctx.state.time.minute;
   if (present.length < 2) return;
-  const p = 0.05 + sim.personality.extraversion * 0.12 + (hasTrait(sim, 'outgoing') ? 0.08 : 0) - (hasTrait(sim, 'loner') ? 0.08 : 0) + (sim.needs.social < 40 ? 0.1 : 0);
+  const p = 0.05 + sim.personality.extraversion * 0.12 + (hasTrait(sim, 'outgoing') ? 0.08 : 0) - (hasTrait(sim, 'loner') ? 0.08 : 0) + (sim.needs.social < 40 ? 0.25 : 0) + (sim.needs.social < 15 ? 0.3 : 0);
   if (!ctx.rng.chance(clamp(p, 0.02, 0.4))) return;
   const others = present.filter((o) => o.id !== sim.id && !(o.currentAction && /sleep/.test(o.currentAction.actionId)) && !isKid(o));
   if (!others.length) return;
@@ -359,8 +402,9 @@ function socialAutonomy(ctx: SystemContext, sim: Sim, present: Sim[]): void {
   }
   const romantic = romanticallyCompatible(sim, other) && (isSingle(sim) && isSingle(other) || partnerOf(sim) === other.id) && compat > 0.45 && ctx.rng.chance(0.25);
   const gain = 1 + Math.round(compat * 3);
-  ctx.applyEffects(sim.id, { relationships: [{ simId: other.id, friendship: gain, familiarity: 1.5, romance: romantic ? 2 : undefined, attraction: romantic ? 1 : undefined, mutual: true }], needs: { social: 8 } }, 'npc:chat');
-  ctx.applyEffects(other.id, { needs: { social: 8 } }, 'npc:chat');
+  const socialGain = sim.needs.social < 30 ? 22 : 12;
+  ctx.applyEffects(sim.id, { relationships: [{ simId: other.id, friendship: gain, familiarity: 1.5, romance: romantic ? 2 : undefined, attraction: romantic ? 1 : undefined, mutual: true }], needs: { social: socialGain, fun: 3 } }, 'npc:chat');
+  ctx.applyEffects(other.id, { needs: { social: 10 } }, 'npc:chat');
   if (ctx.rng.chance(0.25)) {
     const where = ctx.query.venueMaybe(sim.location.venueId)?.name ?? 'somewhere';
     pushMemory(sim, { text: `Chatted with ${simName(other)} at ${where}.`, participants: [other.id], valence: 0.3, salience: 12, tags: ['npc'] }, now, ctx.rng);
@@ -370,6 +414,8 @@ function socialAutonomy(ctx: SystemContext, sim: Sim, present: Sim[]): void {
 
 function tickFull(ctx: SystemContext, sim: Sim, present: Sim[]): void {
   const now = ctx.state.time.minute;
+  CURRENT_MOD = ((now % DAY) + DAY) % DAY;
+  CURRENT_STATE = ctx.state;
   if (sim.travel) return;
   if (sim.legal.incarceratedUntil && sim.legal.incarceratedUntil > now) return;
   const target = whereIs(ctx, sim, now);
@@ -396,13 +442,30 @@ function tickFull(ctx: SystemContext, sim: Sim, present: Sim[]): void {
       sim.currentAction!.endsAt = now + 20;
       return;
     }
-    synthetic(sim, 'npc:sleep', 'Sleeping', until - now, { energy: 0.25, bladder: -0.02 });
+    const wake = Math.max(now + 5, Math.min(until, now + minutesToNextObligation(ctx, sim, now) - 45));
+    synthetic(sim, 'npc:sleep', 'Sleeping', wake - now, { energy: 0.25, bladder: -0.02 });
     sim.currentAction!.startedAt = now;
-    sim.currentAction!.endsAt = until;
+    sim.currentAction!.endsAt = wake;
     sim.body.lastSleptAt = now;
     return;
   }
   if (block?.kind === 'work' || block?.kind === 'school' || block?.kind === 'childcare') {
+    // a break to eat, drink or use the restroom when a need is getting serious
+    if (sim.needs.hunger < 35 || sim.needs.thirst < 30 || sim.needs.bladder < 25) {
+      const a = pickAction(ctx, sim, atHome);
+      if (a && a.satisfies?.length && a.durationMinutes <= 45) {
+        runAction(ctx, sim, a, atHome);
+        return;
+      }
+      if (sim.needs.hunger < 20) {
+        if (!atHome) transact(sim, -9, 'Lunch', now, { category: 'food', rng: ctx.rng, allowCredit: false });
+        synthetic(sim, 'npc:lunch', 'Eating lunch', 30, { hunger: 1.6, thirst: 1, social: 0.1 });
+        sim.currentAction!.startedAt = now;
+        sim.currentAction!.endsAt = now + 30;
+        ctx.emit({ type: 'custom', kind: 'needs:ate', simId: sim.id, payload: { calories: 650, healthy: 0, hungerRestored: 48 } });
+        return;
+      }
+    }
     const social = ctx.rng.chance(0.15);
     if (social) socialAutonomy(ctx, sim, present);
     synthetic(sim, block.kind === 'work' ? 'npc:work' : 'npc:school', block.kind === 'work' ? 'Working' : 'At school', Math.min(60, until - now), { fun: -0.02, social: 0.02 });
@@ -412,9 +475,64 @@ function tickFull(ctx: SystemContext, sim: Sim, present: Sim[]): void {
   }
   socialAutonomy(ctx, sim, present);
   if (sim.currentAction) return;
-  const a = pickAction(ctx, sim, atHome);
-  if (a) {
-    runAction(ctx, sim, a, atHome);
+  const critical: NeedId | undefined = sim.needs.hunger < 18 ? 'hunger' : sim.needs.thirst < 15 ? 'thirst' : sim.needs.bladder < 12 ? 'bladder' : sim.needs.energy < 12 ? 'energy' : undefined;
+  if (critical) {
+    const fix = pickAction(ctx, sim, atHome, critical);
+    if (fix) {
+      runAction(ctx, sim, fix, atHome);
+      return;
+    }
+  } else {
+    // pantry running dry at home → restock (delivery) before it becomes a crisis
+    if (atHome && hh && sim.lifeStage !== 'child' && sim.lifeStage !== 'teen' && now - (Number(sim.flags['npc:groceriesAt']) || -1e9) > DAY) {
+      const foodUnits = Object.entries(hh.pantry).reduce((n, [id, q]) => n + (ctx.content.items[id]?.category === 'food' || ctx.content.items[id]?.category === 'ingredient' ? q : 0), 0);
+      if (foodUnits < 6) {
+        sim.flags['npc:groceriesAt'] = now;
+        const cost = Math.round(95 * ctx.state.region.costOfLiving);
+        const r = transact(sim, -cost, 'Groceries (delivery)', now, { category: 'food', rng: ctx.rng });
+        if (r.ok) {
+          for (const [id, q] of [['eggs', 1], ['milk', 1], ['bread', 2], ['rice', 1], ['pasta', 2], ['chicken', 2], ['ground_beef', 1], ['vegetables', 3], ['fruit', 3], ['cheese', 1], ['butter', 1], ['cereal', 1], ['snacks', 3], ['coffee_beans', 1], ['yogurt', 2], ['potatoes', 1], ['onions', 1], ['tomatoes', 1]] as [string, number][]) if (ctx.content.items[id]) hh.pantry[id] = (hh.pantry[id] ?? 0) + q;
+          synthetic(sim, 'npc:groceries', 'Ordering groceries', 15, { fun: 0.05 });
+          sim.currentAction!.startedAt = now;
+          sim.currentAction!.endsAt = now + 15;
+          if (ctx.query.isControlled(sim.id)) ctx.log({ text: `${sim.identity.firstName} orders groceries — $${cost}.`, kind: 'money', simId: sim.id, importance: 1 });
+          ctx.emit({ type: 'shop:purchased', simId: sim.id, items: [], total: cost });
+          return;
+        }
+      }
+    }
+    const a = pickAction(ctx, sim, atHome);
+    if (a) {
+      runAction(ctx, sim, a, atHome);
+      return;
+    }
+  }
+  // nothing here meets a critical need: improvise like a person would
+  if (sim.needs.hunger < 18) {
+    if (!atHome) transact(sim, -9, 'A quick bite', now, { category: 'food', rng: ctx.rng, allowCredit: false });
+    synthetic(sim, 'npc:eat', 'Grabbing a bite', 25, { hunger: 1.8, thirst: 0.8 });
+    sim.currentAction!.startedAt = now;
+    sim.currentAction!.endsAt = now + 25;
+    ctx.emit({ type: 'custom', kind: 'needs:ate', simId: sim.id, payload: { calories: 600, healthy: -0.2, hungerRestored: 45 } });
+    return;
+  }
+  if (sim.needs.thirst < 15) {
+    synthetic(sim, 'npc:drink', 'Getting some water', 3, { thirst: 15 });
+    sim.currentAction!.startedAt = now;
+    sim.currentAction!.endsAt = now + 3;
+    return;
+  }
+  if (sim.needs.bladder < 12) {
+    synthetic(sim, 'npc:restroom', 'Finding a restroom', 6, { bladder: 15 });
+    sim.currentAction!.startedAt = now;
+    sim.currentAction!.endsAt = now + 6;
+    return;
+  }
+  if (sim.needs.energy < 12) {
+    synthetic(sim, 'npc:nap', 'Dozing off', 60, { energy: 0.45, comfort: 0.05 });
+    sim.currentAction!.startedAt = now;
+    sim.currentAction!.endsAt = now + 60;
+    sim.body.lastSleptAt = now;
     return;
   }
   const idleLabel = block?.kind === 'social' ? 'Hanging out' : block?.kind === 'meal' ? 'Eating' : block?.kind === 'errand' ? 'Running errands' : block?.kind === 'gym' ? 'Working out' : block?.kind === 'worship' ? 'At the service' : block?.kind === 'chores' ? 'Doing chores' : 'Relaxing';
