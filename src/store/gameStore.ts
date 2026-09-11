@@ -357,6 +357,10 @@ export const useGame = create<GameState>((set, get) => ({
         return;
       }
       set({ followUps: (res.data?.followUps as string[] | undefined) ?? [] });
+      if (res.conversationId && engine.state.conversations[res.conversationId as Conversation['id']]?.active) {
+        set({ openConversationId: res.conversationId });
+        haptic.select();
+      }
       if (res.rejected?.length) get().pushToast(`The world didn’t quite allow that: ${res.rejected.slice(0, 2).join('; ')}`, 'info');
       if (res.interrupted) haptic.warning();
     } catch (err) {

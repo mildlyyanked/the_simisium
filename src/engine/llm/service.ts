@@ -18,7 +18,7 @@ import * as directorPrompt from './prompts/director';
 import * as narratePrompt from './prompts/narrate';
 import * as npcMessagePrompt from './prompts/npcMessage';
 import * as summarizePrompt from './prompts/summarize';
-import { BioSchema, DirectorSchema, InteractionOutcomeSchema, NpcMessageSchema, toJsonSchema, type InteractionOutcomeOut } from './schemas';
+import { BioSchema, DirectorSchema, InteractionOutcomeSchema, InteractionOutcomeWireSchema, NpcMessageSchema, normalizeOutcomeShape, toJsonSchema, type InteractionOutcomeOut } from './schemas';
 
 export interface OpenRouterServiceOptions extends LLMConfig {
   content: ContentCatalog;
@@ -31,7 +31,7 @@ export interface OpenRouterServiceOptions extends LLMConfig {
   sleep?: (ms: number) => Promise<void>;
 }
 
-const OUTCOME_SCHEMA = { name: 'interaction_outcome', schema: toJsonSchema(InteractionOutcomeSchema) };
+const OUTCOME_SCHEMA = { name: 'interaction_outcome', schema: toJsonSchema(InteractionOutcomeWireSchema) };
 const BIO_JSON_SCHEMA = { name: 'npc_bio', schema: toJsonSchema(BioSchema) };
 const DIRECTOR_JSON_SCHEMA = { name: 'story_beats', schema: toJsonSchema(DirectorSchema) };
 const NPC_MESSAGE_JSON_SCHEMA = { name: 'npc_message', schema: toJsonSchema(NpcMessageSchema) };
@@ -43,6 +43,7 @@ export class OpenRouterLLMService implements LLMService {
   private readonly onUsage?: (u: LLMUsage) => void;
   private readonly onError?: (task: LLMTask, error: Error) => void;
   private readonly holidayResolver?: HolidayResolver;
+  lastError?: { task: LLMTask; message: string; at: number };
 
   constructor(opts: OpenRouterServiceOptions) {
     const { content, fetchImpl, onUsage, onError, holidayResolver, sleep, ...config } = opts;
@@ -68,6 +69,7 @@ export class OpenRouterLLMService implements LLMService {
 
   private failed(task: LLMTask, err: unknown): void {
     const e = err instanceof Error ? err : new Error(String(err));
+    this.lastError = { task, message: e.message, at: Date.now() };
     try {
       this.onError?.(task, e);
     } catch {
@@ -83,12 +85,28 @@ export class OpenRouterLLMService implements LLMService {
         { role: 'system', content: dialoguePrompt.system(ctx) },
         { role: 'user', content: dialoguePrompt.user(ctx, playerText) },
       ];
-      const res = await this.client.complete('dialogue', messages, { schema: OUTCOME_SCHEMA });
-      const parsed = InteractionOutcomeSchema.safeParse(res.json);
+      let res = await this.client.complete('dialogue', messages, { schema: OUTCOME_SCHEMA });
+      let parsed = InteractionOutcomeSchema.safeParse(normalizeOutcomeShape(res.json));
       if (!parsed.success) throw new Error(`dialogue: response did not match schema (${parsed.error.issues[0]?.message ?? 'unknown'})`);
-      const outcome = coerceOutcome(parsed.data, scene, ctx, targetId, 'dialogue');
-      outcome.usage = res.usage;
+      let outcome = coerceOutcome(parsed.data, scene, ctx, targetId, 'dialogue');
       this.report(res.usage);
+      const target = scene.state.sims[targetId];
+      const answered = outcome.dialogue.some((d) => d.speakerId === targetId);
+      if (!answered && !outcome.endsConversation && target) {
+        // one corrective pass: the addressed NPC has to speak (or the model must say why not)
+        const retry: ChatMessage[] = [...messages, { role: 'assistant', content: res.text.slice(0, 4000) }, { role: 'user', content: `That response had no line from ${target.identity.firstName} (speakerId "${targetId}"). Rewrite the same turn so ${target.identity.firstName} actually answers ${ctx.conversation?.channel === 'text' ? 'by text' : 'out loud'} in "dialogue" (short is fine), or, if they truly cannot respond right now, say exactly why in one sentence of narration. JSON only.` }];
+        const res2 = await this.client.complete('dialogue', retry, { schema: OUTCOME_SCHEMA });
+        const parsed2 = InteractionOutcomeSchema.safeParse(normalizeOutcomeShape(res2.json));
+        if (parsed2.success) {
+          const o2 = coerceOutcome(parsed2.data, scene, ctx, targetId, 'dialogue');
+          this.report(res2.usage);
+          if (o2.dialogue.some((d) => d.speakerId === targetId) || o2.narration) {
+            outcome = o2;
+            res = res2;
+          }
+        }
+      }
+      outcome.usage = res.usage;
       return outcome;
     } catch (err) {
       this.failed('dialogue', err);
@@ -106,7 +124,7 @@ export class OpenRouterLLMService implements LLMService {
         { role: 'user', content: adjudicatePrompt.user(ctx, text, opts.action) },
       ];
       const res = await this.client.complete('adjudicate', messages, { schema: OUTCOME_SCHEMA });
-      const parsed = InteractionOutcomeSchema.safeParse(res.json);
+      const parsed = InteractionOutcomeSchema.safeParse(normalizeOutcomeShape(res.json));
       if (!parsed.success) throw new Error(`adjudicate: response did not match schema (${parsed.error.issues[0]?.message ?? 'unknown'})`);
       const outcome = coerceOutcome(parsed.data, scene, ctx, undefined, 'adjudicate');
       outcome.usage = res.usage;
@@ -263,6 +281,7 @@ export function coerceOutcome(raw: InteractionOutcomeOut, scene: SceneSnapshot, 
   const { actor, state } = scene;
   const present = new Map<SimId, Sim>();
   for (const s of scene.present) present.set(s.id, s);
+  for (const pid of scene.conversation?.participantIds ?? []) if (pid !== actor.id && state.sims[pid]) present.set(pid, state.sims[pid]);
   const validIds = new Set<string>([actor.id, ...present.keys()]);
   const byName = new Map<string, SimId>();
   for (const s of [actor, ...scene.present]) {
@@ -283,7 +302,7 @@ export function coerceOutcome(raw: InteractionOutcomeOut, scene: SceneSnapshot, 
   const fallbackSpeaker: SimId | 'narrator' = primaryId && validIds.has(primaryId) ? primaryId : 'narrator';
 
   const dialogue = (raw.dialogue ?? [])
-    .filter((d) => d && typeof d.text === 'string' && d.text.trim())
+    .filter((d): d is NonNullable<typeof d> => !!d && typeof d.text === 'string' && !!d.text.trim())
     .slice(0, 8)
     .map((d) => {
       const sid = d.speakerId === 'narrator' ? 'narrator' : (resolveId(d.speakerId, true) ?? fallbackSpeaker);
@@ -343,6 +362,8 @@ export function coerceOutcome(raw: InteractionOutcomeOut, scene: SceneSnapshot, 
     .slice(0, 4);
 
   const followUps = [...new Set((raw.followUps ?? []).filter((f) => typeof f === 'string').map((f) => f.trim().replace(/^["'“”]+|["'“”]+$/g, '')).filter(Boolean))].slice(0, 3);
+  const startWith = task === 'adjudicate' && !scene.conversation ? resolveId(raw.startConversationWith, false) : undefined;
+  const startConversationWith = startWith && scene.present.some((p) => p.id === startWith) ? startWith : undefined;
 
   const maxMinutes = task === 'dialogue' ? 120 : ctx.rules.maxTimeElapsed;
   const minutesRaw = Number.isFinite(raw.minutes) ? (raw.minutes as number) : Number.isFinite(effects.timeElapsedMinutes) ? (effects.timeElapsedMinutes as number) : 5;
@@ -358,6 +379,7 @@ export function coerceOutcome(raw: InteractionOutcomeOut, scene: SceneSnapshot, 
     npcMemories,
     followUps,
     endsConversation: raw.endsConversation === true,
+    startConversationWith,
     minutes,
     fallback: false,
   };

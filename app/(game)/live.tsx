@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useRouter } from 'expo-router';
 import { useGame } from '@/store/gameStore';
 import { useActions, useActiveSim, useControlledSims, useEngine, useOpenConversation, usePendingInterrupt, useVenueOf } from '@/store/selectors';
@@ -72,6 +73,7 @@ export default function LiveScreen(): React.ReactElement {
 
   return (
     <Screen edges={['top']} gradient={false} style={{ backgroundColor: t.colors.background }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
       {/* header */}
       <View style={{ paddingHorizontal: 14, paddingTop: 6, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: t.colors.border, backgroundColor: t.colors.backgroundElevated }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -166,6 +168,7 @@ export default function LiveScreen(): React.ReactElement {
         />
         <TimeBar clock={engine.clock} weather={engine.state.weather} onWait={(m) => wait(m)} onWaitUntilMorning={waitUntilMorning} onSkipToNextEvent={skipToNextEvent} nextEventLabel={nextEvent?.label} disabled={busy || !!interrupt || !!conversation} holidays={holidays} />
       </View>
+      </KeyboardAvoidingView>
 
       <ActionSheet
         visible={sheet}

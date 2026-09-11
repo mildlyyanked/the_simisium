@@ -82,22 +82,80 @@ export type EffectBundleOut = z.infer<typeof EffectBundleSchema>;
 // ---------------------------------------------------------------------------
 // Interaction outcome (dialogue + adjudicate)
 // ---------------------------------------------------------------------------
+/** Numbers as the model writes them: 5, "5", "+5", "-3.5". */
+const num = z.preprocess((v) => {
+  if (typeof v === 'string') {
+    const n = Number(v.trim().replace(/^\+/, ''));
+    return Number.isFinite(n) ? n : v;
+  }
+  return v;
+}, z.number());
+const numRecLoose = z.record(z.string(), num.catch(0));
+/** Array whose malformed entries drop out instead of failing the parse. */
+const looseArray = <T extends z.ZodType>(item: T) =>
+  z
+    .array(item.nullable().catch(null))
+    .transform((a) => a.filter((x): x is z.output<T> => x !== null))
+    .optional()
+    .catch(undefined);
+
 export const DialogueLineSchema = z.object({
   speakerId: z.string(),
   text: z.string(),
-  emotion: z.string().optional(),
+  emotion: z.string().optional().catch(undefined),
 });
 
-export const InteractionOutcomeSchema = z.object({
+/**
+ * Lenient outcome schema: a malformed corner of the response drops out instead of failing the
+ * whole turn (the engine's effect validator is the real gate). Field aliases are normalized by
+ * `normalizeOutcomeShape` before parsing.
+ */
+const LooseEffectBundleSchema = z.object({
+  needs: numRecLoose.optional().catch(undefined),
+  money: z.object({ amount: num, memo: z.string().catch('Exchange'), counterparty: z.string().optional().catch(undefined), category: z.string().optional().catch(undefined) }).optional().catch(undefined),
+  skills: numRecLoose.optional().catch(undefined),
+  moodlets: looseArray(z.object({ emotion: z.string(), label: z.string(), intensity: num, durationMinutes: num.catch(60) })),
+  stress: num.optional().catch(undefined),
+  health: num.optional().catch(undefined),
+  fitness: num.optional().catch(undefined),
+  bloodAlcohol: num.optional().catch(undefined),
+  caffeine: num.optional().catch(undefined),
+  cannabis: num.optional().catch(undefined),
+  relationships: looseArray(z.object({ simId: z.string(), friendship: num.optional().catch(undefined), romance: num.optional().catch(undefined), trust: num.optional().catch(undefined), familiarity: num.optional().catch(undefined), attraction: num.optional().catch(undefined), mutual: z.boolean().optional().catch(undefined), flags: z.array(z.object({ flag: z.string(), op: z.enum(['add', 'remove']) })).optional().catch(undefined) })),
+  memories: looseArray(MemorySpecSchema),
+  items: looseArray(z.object({ op: z.enum(['gain', 'lose']), itemId: z.string(), qty: num.catch(1) })),
+  legal: looseArray(LegalEffectSchema),
+  schedule: looseArray(z.object({ inMinutes: num.optional().catch(undefined), kind: z.string(), label: z.string(), payload: z.record(z.string(), z.unknown()).optional().catch(undefined) })),
+  moveTo: z.object({ venueId: z.string() }).optional().catch(undefined),
+  timeElapsedMinutes: num.optional().catch(undefined),
+  flags: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional().catch(undefined),
+});
+
+/** Strict shape sent to the API as response_format (models follow a clean schema better). */
+export const InteractionOutcomeWireSchema = z.object({
   narration: z.string().optional(),
-  dialogue: z.array(DialogueLineSchema).optional(),
+  dialogue: z.array(z.object({ speakerId: z.string(), text: z.string(), emotion: z.string().optional() })).optional(),
   effects: EffectBundleSchema.optional(),
   otherEffects: z.record(z.string(), EffectBundleSchema).optional(),
   revealedFacts: z.array(z.object({ simId: z.string(), factIds: z.array(z.string()) })).optional(),
   npcMemories: z.array(z.object({ simId: z.string(), text: z.string(), salience: z.number().optional(), valence: z.number().optional() })).optional(),
   followUps: z.array(z.string()).optional(),
   endsConversation: z.boolean().optional(),
+  startConversationWith: z.string().optional(),
   minutes: z.number().optional(),
+});
+
+export const InteractionOutcomeSchema = z.object({
+  narration: z.string().optional().catch(undefined),
+  dialogue: looseArray(DialogueLineSchema),
+  effects: LooseEffectBundleSchema.optional().catch(undefined),
+  otherEffects: z.record(z.string(), LooseEffectBundleSchema.catch({})).optional().catch(undefined),
+  revealedFacts: looseArray(z.object({ simId: z.string(), factIds: z.array(z.string()) })),
+  npcMemories: looseArray(z.object({ simId: z.string(), text: z.string(), salience: num.optional().catch(undefined), valence: num.optional().catch(undefined) })),
+  followUps: z.array(z.string().catch('')).optional().catch(undefined),
+  endsConversation: z.boolean().optional().catch(undefined),
+  startConversationWith: z.string().optional().catch(undefined),
+  minutes: num.optional().catch(undefined),
 });
 export type InteractionOutcomeOut = z.infer<typeof InteractionOutcomeSchema>;
 
@@ -252,4 +310,54 @@ export function extractJson(text: string): unknown {
     }
   }
   return undefined;
+}
+
+
+/**
+ * Normalize common shape drift in model output before parsing: field aliases
+ * (speaker → speakerId, npcId → simId), a single dialogue object instead of an array,
+ * dialogue given as a string, effects wrapped one level deep.
+ */
+export function normalizeOutcomeShape(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+  const o = { ...(raw as Record<string, unknown>) };
+  const alias = (obj: Record<string, unknown>, from: string[], to: string): void => {
+    if (obj[to] !== undefined) return;
+    for (const f of from) if (obj[f] !== undefined) { obj[to] = obj[f]; return; }
+  };
+  alias(o, ['narrative', 'text', 'description'], 'narration');
+  alias(o, ['lines', 'speech', 'replies', 'reply'], 'dialogue');
+  alias(o, ['playerEffects', 'actorEffects', 'effect'], 'effects');
+  alias(o, ['npcEffects', 'others'], 'otherEffects');
+  alias(o, ['suggestions', 'options', 'nextMoves'], 'followUps');
+  alias(o, ['timeMinutes', 'elapsedMinutes', 'duration'], 'minutes');
+  alias(o, ['startConversation', 'conversationWith', 'openConversationWith'], 'startConversationWith');
+  if (typeof o.dialogue === 'string') o.dialogue = [{ speakerId: 'narrator', text: o.dialogue }];
+  if (o.dialogue && typeof o.dialogue === 'object' && !Array.isArray(o.dialogue)) o.dialogue = [o.dialogue];
+  if (Array.isArray(o.dialogue)) {
+    o.dialogue = o.dialogue.map((d) => {
+      if (typeof d === 'string') return { speakerId: 'narrator', text: d };
+      if (!d || typeof d !== 'object') return d;
+      const line = { ...(d as Record<string, unknown>) };
+      alias(line, ['speaker', 'simId', 'id', 'who', 'name', 'npcId'], 'speakerId');
+      alias(line, ['line', 'content', 'message', 'says'], 'text');
+      return line;
+    });
+  }
+  if (o.startConversationWith && typeof o.startConversationWith === 'object') {
+    const sc = o.startConversationWith as Record<string, unknown>;
+    o.startConversationWith = sc.simId ?? sc.id ?? sc.npcId;
+  }
+  if (typeof o.startConversationWith === 'boolean') delete o.startConversationWith;
+  for (const key of ['effects']) {
+    const e = o[key];
+    if (e && typeof e === 'object' && !Array.isArray(e)) {
+      const eo = e as Record<string, unknown>;
+      // some models wrap the bundle: { effects: { player: {...} } }
+      if (eo.player && typeof eo.player === 'object' && Object.keys(eo).length === 1) o[key] = eo.player;
+    } else if (e !== undefined && (typeof e !== 'object' || Array.isArray(e))) delete o[key];
+  }
+  if (o.otherEffects && (typeof o.otherEffects !== 'object' || Array.isArray(o.otherEffects))) delete o.otherEffects;
+  if (typeof o.followUps === 'string') o.followUps = [o.followUps];
+  return o;
 }

@@ -14,11 +14,14 @@ export function system(ctx: SceneContext): string {
       : channel === 'phone' || channel === 'video'
         ? 'This is a PHONE/VIDEO call: only voices (and faces on video); background noise and interruptions on the NPC\'s end are fair game; no touching, no handing things over.'
         : 'This is IN PERSON: body language, the room, other people, and interruptions all count.';
+  const remoteNote = npc && npc.remote ? `${npc.firstName} is NOT in the same place as the player (${npc.whereabouts ?? 'elsewhere'}); the two are connected only by ${channel === 'text' ? 'text messages' : 'the call'}. Nothing the player does physically reaches ${npc.firstName}, and ${npc.firstName} reacts only to what comes through the ${channel === 'text' ? 'thread' : 'line'}.` : '';
   return `${CORE_PRINCIPLES}
 
 ## This task: a conversation turn
 ${npc ? `The player is talking to ${npc.name}. Speak as ${npc.firstName}, and as anyone else present who would naturally react.` : 'No one in particular is being addressed; respond with whoever would naturally react, or with narration only.'}
 ${channelNote}
+${remoteNote}
+${npc ? `REQUIRED: this turn must contain at least one "dialogue" line with speakerId "${npc.id}" (${npc.firstName}'s reply${channel === 'text' ? ', as a text message' : ''}). ${npc.firstName} may answer briefly, deflect, or say they have to go, but they answer. The only exception is when ${npc.firstName} genuinely cannot respond right now (asleep, mid-shift with no phone, ignoring the player on purpose); then narrate exactly that in one sentence, in narration, and keep "dialogue" empty.` : ''}
 
 How to decide the reply:
 - Start from what the player literally said or did, then filter it through the NPC's mood, needs, current activity and schedule, their traits and trait voice, the relationship numbers and history, their memories of the player, and the setting. A stranger on shift gives a stranger-on-shift answer. A friend with a grudge lets it leak. Someone exhausted or slammed gives you thirty seconds, not a heart-to-heart.

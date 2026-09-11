@@ -98,6 +98,9 @@ export interface NpcContext {
   currentAction?: string;
   schedule?: string;
   primary: boolean;
+  /** not physically present; reachable only through the conversation channel */
+  remote?: boolean;
+  whereabouts?: string;
 }
 
 export interface SceneContext {
@@ -213,12 +216,25 @@ export function buildSceneContext(scene: SceneSnapshot, opts: BuildContextOption
   // ---- npcs
   const maxNpcs = opts.maxNpcs ?? 6;
   const others = scene.present.filter((s) => s.id !== actor.id && s.body.alive);
+  const remote: Sim[] = [];
+  for (const pid of scene.conversation?.participantIds ?? []) {
+    if (pid === actor.id || others.some((o) => o.id === pid)) continue;
+    const rs = state.sims[pid];
+    if (rs && rs.body.alive) remote.push(rs);
+  }
   const ranked = others
     .map((s) => ({ s, score: (s.id === opts.primaryId ? 1e6 : 0) + (actor.relationships[s.id]?.familiarity ?? 0) + (actor.relationships[s.id]?.friendship ?? 0) / 2 + (s.lod === 'full' ? 5 : 0) }))
     .sort((a, b) => b.score - a.score || a.s.id.localeCompare(b.s.id))
     .slice(0, maxNpcs)
     .map((x) => x.s);
   const npcs = ranked.map((npc) => buildNpc(state, actor, npc, content, now, npc.id === opts.primaryId));
+  for (const rs of remote) {
+    const n = buildNpc(state, actor, rs, content, now, rs.id === opts.primaryId);
+    n.remote = true;
+    const where = state.venues[rs.location.venueId];
+    n.whereabouts = where ? `${where.archetype === 'home' || where.archetype === 'apartment_building' ? 'at home' : `at ${where.name}`}${rs.currentAction ? `, ${rs.currentAction.label.toLowerCase()}` : ''}` : 'elsewhere';
+    npcs.unshift(n);
+  }
 
   // ---- recent log
   const recentLog = state.log
@@ -253,7 +269,7 @@ export function buildSceneContext(scene: SceneSnapshot, opts: BuildContextOption
     rules: {
       ...DEFAULT_ENVELOPE,
       allowMoveTo: opts.allowMoveTo ?? false,
-      presentSimIds: others.map((s) => s.id).sort(),
+      presentSimIds: [...others.map((s) => s.id), ...remote.map((s) => s.id)].sort(),
       allowedItems,
       knownVenueIds: knownVenues.map((v) => v.id),
       crimeIds: Object.keys(content.crimes).sort(),
@@ -643,7 +659,7 @@ export function renderSceneContext(ctx: SceneContext): string {
 
   for (const n of ctx.npcs) {
     push('');
-    push(`## ${n.primary ? 'NPC (addressed)' : 'NPC present'}: ${n.name} (id ${n.id})`);
+    push(`## ${n.remote ? `NPC (addressed, NOT here: ${n.whereabouts ?? 'elsewhere'}; reachable only through this conversation)` : n.primary ? 'NPC (addressed)' : 'NPC present'}: ${n.name} (id ${n.id})`);
     push(`- ${n.age}, ${n.gender} (${n.pronouns})${n.role ? `; ${n.role}` : ''}; ${n.appearance}`);
     if (n.traits.length) push(`- Traits: ${n.traits.join(', ')}`);
     push(`- Personality: ${n.personality}`);

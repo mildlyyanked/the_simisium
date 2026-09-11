@@ -259,7 +259,7 @@ export class OpenRouterClient {
       } catch (err) {
         lastErr = err;
         // A 400 means the provider rejected the request shape (usually response_format) → degrade format.
-        if (err instanceof LLMHttpError && err.status === 400 && fi < formats.length - 1) continue;
+        if (err instanceof LLMHttpError && (err.status === 400 || err.status === 404 || err.status === 422) && fi < formats.length - 1) continue;
         if (err instanceof Error && err.message.startsWith('Model returned non-JSON') && fi < formats.length - 1) continue;
         throw err;
       }

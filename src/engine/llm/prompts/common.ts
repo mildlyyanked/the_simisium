@@ -24,6 +24,7 @@ export const OUTCOME_CONTRACT = `Return ONE JSON object with exactly this shape 
   "npcMemories": [{ "simId": string, "text": string, "salience": number, "valence": number }],   // NPC point of view, first person ("She told me…"); salience 0–100; valence −1..1; 0–2 entries, only for things worth remembering
   "followUps": [string, string, string],    // three short things the player might say or do next, in the player's voice, varied in tone (one warm/easy, one probing or practical, one bold or risky); ≤ 12 words each; no quotation marks
   "endsConversation": boolean,
+  "startConversationWith": string,          // ONLY when the player spoke to a present NPC and a back-and-forth begins: that NPC's sim id (their reply goes in "dialogue")
   "minutes": number                         // realistic time this exchange took
 }
 

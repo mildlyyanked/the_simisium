@@ -27,3 +27,4 @@ export { ActionSheet } from './ActionSheet';
 export { PhoneShell, type PhoneApp } from './PhoneShell';
 export { Avatar, SimAvatar } from '../avatar/Avatar';
 export { Icon } from '../icons';
+export { ModelPicker, loadOpenRouterModels } from './ModelPicker';

@@ -677,7 +677,7 @@ function startWorking(ctx: SystemContext, sim: Sim, job: Job, block: ShiftBlock)
     if (late > CAREER_CONFIG.lateGraceMinutes) {
       job.performance = clamp100(job.performance - Math.min(8, late / 30));
       ctx.emit({ type: 'career:late', simId: sim.id, minutes: late });
-      ctx.log({ text: `${name(ctx, sim)} ${verb(ctx, sim, 'are', 'is')} ${Math.round(late)} minutes late for ${verb(ctx, sim, 'your', 'their')} shift.`, kind: 'alert', simId: sim.id, importance: 1 });
+      if (isYou(ctx, sim)) ctx.log({ text: `You are ${Math.round(late)} minutes late for your shift.`, kind: 'alert', simId: sim.id, importance: 1 });
       if (late > 60 && job.bossSimId) ctx.applyEffects(sim.id, { relationships: [{ simId: job.bossSimId, trust: -2 }] }, 'career:late');
     }
   }

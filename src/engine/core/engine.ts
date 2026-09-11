@@ -444,6 +444,22 @@ export class Engine {
     return { ...DEFAULT_ENVELOPE, presentSimIds: present, ...overrides };
   }
 
+  /** Keep the phones' message threads in step with a text-channel conversation. */
+  private mirrorText(from: SimId, to: SimId, text: string, read = false): void {
+    const a = this.state.sims[from];
+    const b = this.state.sims[to];
+    if (!a || !b) return;
+    const msg = { id: shortId(this.rng, 'msg'), from, to, at: this.now, text: text.slice(0, 500), read };
+    (a.phone.threads[to] ||= []).push({ ...msg, read: true });
+    (b.phone.threads[from] ||= []).push({ ...msg, read: read || b.id === this.state.player.activeSimId });
+    for (const [s, key] of [[a, to], [b, from]] as const) {
+      const t = s.phone.threads[key];
+      if (t.length > 100) t.splice(0, t.length - 100);
+    }
+    if (!a.phone.contacts.includes(to)) a.phone.contacts.push(to);
+    if (!b.phone.contacts.includes(from)) b.phone.contacts.push(from);
+  }
+
   startConversation(simId: SimId, otherIds: SimId[], channel: Conversation['channel'] = 'in_person', topic?: string): Conversation {
     const actor = this.query.sim(simId);
     const existing = Object.values(this.state.conversations).find((c) => c.active && c.participantIds.includes(simId) && otherIds.every((o) => c.participantIds.includes(o)) && c.channel === channel);
@@ -499,6 +515,7 @@ export class Engine {
     for (const t of targets) await this.ensureBio(t);
     const scene = this.scene(simId, conversationId);
     conv.turns.push({ speakerId: simId, text, at: this.now });
+    if (conv.channel === 'text') for (const t of targets) this.mirrorText(simId, t, text);
     this.log({ text, kind: 'dialogue', simId, speakerId: simId, venueId: conv.venueId, importance: 1 });
     this.bus.emit({ type: 'conversation:turn', conversationId, speakerId: simId, text });
     if (!this.llm) return { ok: false, reason: 'LLM not configured', minutes: 0 };
@@ -526,7 +543,13 @@ export class Engine {
       this.bus.emit({ type: 'llm:error', task: 'adjudicate', error: (err as Error).message });
       return { ok: false, reason: `Nothing happens (${(err as Error).message})`, minutes: 0 };
     }
-    return this.applyOutcome(simId, outcome, undefined, 'freeform');
+    let conv: Conversation | undefined;
+    const target = outcome.startConversationWith;
+    if (target && target !== simId && this.state.sims[target] && this.query.simsAt(sim.location.venueId).some((p) => p.id === target)) {
+      conv = this.startConversation(simId, [target], 'in_person');
+      conv.turns.push({ speakerId: simId, text, at: this.now });
+    }
+    return this.applyOutcome(simId, outcome, conv, conv ? 'conversation' : 'freeform');
   }
 
   /** Validate + apply an LLM outcome; advance time; log narration & dialogue. */
@@ -534,6 +557,11 @@ export class Engine {
     const sim = this.state.sims[simId];
     if (!sim) return { ok: false, reason: 'Unknown sim', minutes: 0 };
     const env = this.envelopeFor(simId, { allowMoveTo: source === 'freeform' });
+    if (conv) for (const pid of conv.participantIds) if (pid !== simId) env.presentSimIds.add(pid);
+    if (outcome.fallback && this.llm?.isLive()) {
+      const why = this.llm.lastError?.message ?? 'unknown error';
+      this.log({ text: `(The narrator stumbled: ${why.slice(0, 220)}. This turn used the offline fallback.)`, kind: 'system', simId, venueId: sim.location.venueId, importance: 1, meta: { source: 'llm:fallback' } });
+    }
     const { bundle, rejected } = validateEffects(outcome.effects ?? {}, env, this.state, simId);
     const allRejected = [...rejected, ...(outcome.rejected ?? [])];
     // time first, so effects land at the right minute
@@ -546,6 +574,7 @@ export class Engine {
       this.log({ text: d.text, kind: 'dialogue', simId, speakerId: d.speakerId === 'narrator' ? undefined : d.speakerId, venueId: sim.location.venueId, importance: 1, meta: { emotion: d.emotion } });
       if (conv) {
         conv.turns.push({ speakerId: d.speakerId, text: d.text, at: this.now });
+        if (conv.channel === 'text' && d.speakerId !== 'narrator') this.mirrorText(d.speakerId, simId, d.text, true);
         this.bus.emit({ type: 'conversation:turn', conversationId: conv.id, speakerId: d.speakerId, text: d.text });
       }
     }

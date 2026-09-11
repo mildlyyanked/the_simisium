@@ -41,6 +41,8 @@ export interface InteractionOutcome {
   usage?: LLMUsage;
   /** whether the fallback (non-LLM) path produced this */
   fallback?: boolean;
+  /** the player addressed a present NPC and a conversation should open with them */
+  startConversationWith?: SimId;
 }
 
 export interface SceneSnapshot {
@@ -54,6 +56,8 @@ export interface SceneSnapshot {
 export interface LLMService {
   /** true if a real model is configured and reachable */
   isLive(): boolean;
+  /** most recent live-call failure (the fallback path was used), for diagnostics */
+  lastError?: { task: LLMTask; message: string; at: number };
   /** A controlled sim says/does something in a conversation with NPCs. */
   converse(scene: SceneSnapshot, targetId: SimId, playerText: string, opts?: { channel?: Conversation['channel'] }): Promise<InteractionOutcome>;
   /** A controlled sim attempts a freeform action described in text. */

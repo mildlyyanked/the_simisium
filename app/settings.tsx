@@ -5,7 +5,8 @@ import { useSettings, maskKey, type ModelPreset } from '@/store/settings';
 import { useGame } from '@/store/gameStore';
 import { buildLLM, buildPlaces } from '@/store/engineFactory';
 import type { LLMTask } from '@engine/core/llmTypes';
-import { Screen, Text, Button, Card, SectionHeader, Chip, ChipRow, SegmentedControl, ListRow, Dialog, IconButton, Icon, KeyValue } from '@/ui/components';
+import { Screen, Text, Button, Card, SectionHeader, Chip, ChipRow, SegmentedControl, ListRow, Dialog, IconButton, Icon, KeyValue, ModelPicker } from '@/ui/components';
+import { modelFor } from '@engine/llm/router';
 import { useTheme } from '@/ui/theme';
 
 const TASKS: { id: LLMTask; label: string; hint: string }[] = [
@@ -112,7 +113,6 @@ export default function SettingsScreen(): React.ReactElement {
   const llmUsage = useGame((g) => g.llmUsage);
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [overrideTask, setOverrideTask] = useState<LLMTask | null>(null);
-  const [overrideDraft, setOverrideDraft] = useState('');
 
   const testLLM = async () => {
     const { llm, warning } = buildLLM();
@@ -161,13 +161,10 @@ export default function SettingsScreen(): React.ReactElement {
             <ListRow
               key={task.id}
               title={task.label}
-              subtitle={s.modelOverrides[task.id] ? s.modelOverrides[task.id] : `${task.hint} · preset default`}
+              subtitle={s.modelOverrides[task.id] ? `${s.modelOverrides[task.id]} · ${task.hint}` : `${modelFor(task.id, { preset: s.modelPreset })} · ${task.hint}`}
               chevron
               last={i === TASKS.length - 1}
-              onPress={() => {
-                setOverrideTask(task.id);
-                setOverrideDraft(s.modelOverrides[task.id] ?? '');
-              }}
+              onPress={() => setOverrideTask(task.id)}
             />
           ))}
         </View>
@@ -251,26 +248,21 @@ export default function SettingsScreen(): React.ReactElement {
         </View>
       </Dialog>
 
-      <Dialog visible={!!overrideTask} onClose={() => setOverrideTask(null)} title={`Model for ${TASKS.find((x) => x.id === overrideTask)?.label ?? ''}`}>
-        <Text variant="caption" muted style={{ marginBottom: 8 }}>
-          OpenRouter model id, e.g. anthropic/claude-haiku-4.5. Leave empty to use the preset.
-        </Text>
-        <TextInput value={overrideDraft} onChangeText={setOverrideDraft} placeholder="provider/model" placeholderTextColor={t.colors.textFaint} autoCapitalize="none" autoCorrect={false} accessibilityLabel="Model id" style={{ color: t.colors.text, backgroundColor: t.colors.surfaceRaised, borderRadius: t.radii.md, borderWidth: 1, borderColor: t.colors.borderStrong, paddingHorizontal: 12, height: 44, fontFamily: t.fonts.mono, fontSize: 13 }} />
-        <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'flex-end', marginTop: 14 }}>
-          <Button title="Cancel" variant="ghost" onPress={() => setOverrideTask(null)} />
-          <Button
-            title="Save"
-            onPress={() => {
-              if (!overrideTask) return;
-              const next = { ...s.modelOverrides };
-              if (overrideDraft.trim()) next[overrideTask] = overrideDraft.trim();
-              else delete next[overrideTask];
-              void s.update({ modelOverrides: next });
-              setOverrideTask(null);
-            }}
-          />
-        </View>
-      </Dialog>
+      <ModelPicker
+        visible={!!overrideTask}
+        onClose={() => setOverrideTask(null)}
+        title={`Model for ${TASKS.find((x) => x.id === overrideTask)?.label ?? ''}`}
+        value={overrideTask ? s.modelOverrides[overrideTask] : undefined}
+        presetModel={overrideTask ? modelFor(overrideTask, { preset: s.modelPreset }) : ''}
+        apiKey={s.openRouterKey || undefined}
+        onSelect={(id) => {
+          if (!overrideTask) return;
+          const next = { ...s.modelOverrides };
+          if (id) next[overrideTask] = id;
+          else delete next[overrideTask];
+          void s.update({ modelOverrides: next });
+        }}
+      />
     </Screen>
   );
 }

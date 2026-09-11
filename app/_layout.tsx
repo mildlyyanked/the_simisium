@@ -4,6 +4,7 @@ import { Stack, SplashScreen } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { useSettings } from '@/store/settings';
 import { useGame } from '@/store/gameStore';
 import { ToastHost } from '@/ui/components/Toast';
@@ -41,6 +42,7 @@ export default function RootLayout(): React.ReactElement {
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      <KeyboardProvider>
       <SafeAreaProvider>
         <StatusBar style="light" />
         <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
@@ -55,6 +57,7 @@ export default function RootLayout(): React.ReactElement {
           <ToastHost />
         </View>
       </SafeAreaProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

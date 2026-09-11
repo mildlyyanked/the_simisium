@@ -278,6 +278,7 @@ export class FallbackLLMService implements LLMService {
     let narration = '';
     let minutes = 5;
     let followUps: string[] = [];
+    let startWith: SimId | undefined;
     let dialogue: InteractionOutcome['dialogue'] = [];
     const other: Record<SimId, EffectBundle> = {};
     const memories: InteractionOutcome['npcMemories'] = [];
@@ -580,10 +581,24 @@ export class FallbackLLMService implements LLMService {
         }
       }
       followUps = ['Buy something else', 'Leave', 'Look around'];
+    } else if (/^(hi|hey|hello|yo|yoo+|sup|what's up|howdy|good (morning|afternoon|evening)|excuse me)\b/i.test(t.trim()) || /^".*"$/.test(t.trim())) {
+      // speech: whoever is nearest hears it
+      const who = findPresentByText(scene, t) ?? scene.present[0];
+      minutes = 1;
+      if (who) {
+        startWith = who.id;
+        narration = `${who.identity.firstName} looks up.`;
+        followUps = ['Ask how their day is going', 'Introduce yourself', 'Ask them something specific'];
+        fx.needs = { social: 1 };
+      } else {
+        narration = `You say it to an empty room. Nothing comes of it.`;
+        followUps = ['Look around', 'Check your phone', 'Go somewhere with people'];
+      }
     } else if (/\b(talk to|chat with|say hi to|approach|introduce myself to)\b/.test(lower)) {
       const who = findPresentByText(scene, t) ?? scene.present[0];
       minutes = 2;
       narration = who ? `You catch ${who.identity.firstName}'s eye and step over.` : `There's nobody around to talk to.`;
+      if (who) startWith = who.id;
       followUps = who ? [`Say hi to ${who.identity.firstName}`, `Ask ${who.identity.firstName} a question`, 'Change your mind'] : ['Look around', 'Leave', 'Check your phone'];
       if (who) fx.needs = { social: 1 };
     } else if (/\b(wait|hang out|chill|sit|relax|kill time|do nothing|loiter)\b/.test(lower)) {
@@ -599,12 +614,12 @@ export class FallbackLLMService implements LLMService {
       followUps = ['Act like nothing happened', 'Do something normal', 'Leave'];
     } else {
       minutes = 5;
-      narration = rng.pick([`You give it a shot. ${rng.pick(['It mostly amounts to five minutes of standing around.', 'Nothing much comes of it.', 'The world carries on around you.'])}`, `You try. It is not really a thing you can do here, or at least not now.`]);
+      narration = rng.pick([`You give it a shot. ${rng.pick(['It mostly amounts to five minutes of standing around.', 'Nothing much comes of it.', 'The world carries on around you.'])}`, `You try, and nothing much comes of it right now.`]);
       followUps = ['Try something else', 'Look around', 'Talk to someone'];
     }
 
     fx.timeElapsedMinutes = fx.timeElapsedMinutes ?? minutes;
-    return this.outcome({ narration, dialogue, effects: fx, otherEffects: other, npcMemories: memories, followUps, minutes });
+    return this.outcome({ narration, dialogue, effects: fx, otherEffects: other, npcMemories: memories, followUps, minutes, startConversationWith: startWith });
   }
 
   // ---------------------------------------------------------------------
@@ -699,6 +714,7 @@ export class FallbackLLMService implements LLMService {
       effects: partial.effects ?? {},
       otherEffects: partial.otherEffects,
       revealedFacts: partial.revealedFacts ?? [],
+      startConversationWith: partial.startConversationWith,
       npcMemories: partial.npcMemories ?? [],
       followUps: partial.followUps ?? [],
       endsConversation: partial.endsConversation,
