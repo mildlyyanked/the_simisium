@@ -37,6 +37,7 @@ export function migrate(state: WorldState, from: number): WorldState {
   s.placesCache ||= {};
   s.flags ||= {};
   s.conversations ||= {};
+  s.layouts ||= {};
   return s;
 }
 

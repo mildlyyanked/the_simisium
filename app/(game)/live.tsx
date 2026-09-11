@@ -68,6 +68,7 @@ export default function LiveScreen(): React.ReactElement {
   }
   const status = openStatus(venue.google?.openingPeriods, engine.state.epoch, engine.state.time.minute, engine.ctx().query.isVenueOpen(venue.id));
   const here = engine.ctx().query.simsAt(venue.id).filter((s) => s.id !== sim.id);
+  const roomName = sim.travel ? undefined : engine.roomNameOf(sim.id);
   const autonomy = sim.flags.autonomy === true;
   const holidays = engine.clock.day.holidays;
 
@@ -90,7 +91,7 @@ export default function LiveScreen(): React.ReactElement {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
               <Icon name={ARCHETYPE_ICON[venue.archetype] ?? 'map-marker'} size={13} color={t.colors.textMuted} />
               <Text variant="caption" muted numberOfLines={1} style={{ flexShrink: 1 }}>
-                {sim.travel ? `On the way to ${engine.state.venues[sim.travel.toVenueId]?.name ?? 'somewhere'}` : venue.name}
+                {sim.travel ? `On the way to ${engine.state.venues[sim.travel.toVenueId]?.name ?? 'somewhere'}` : `${venue.name}${roomName ? ` · ${roomName}` : ''}`}
               </Text>
               {venue.archetype !== 'home' ? <Pill label={status.label} color={status.open ? t.colors.success : t.colors.danger} size="xs" /> : null}
               {here.length ? <Pill label={`${here.length} here`} size="xs" /> : null}

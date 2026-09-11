@@ -11,6 +11,8 @@ Underneath is a full simulation: needs, health and illness, money (accounts, cre
 
 You can play a single character or a whole household, switching between members while the others run on autonomy.
 
+Every place has a floor plan: rooms, doors, furniture and people on a tile grid, generated once per venue and kept, so the barista is always behind the same counter and your bed is always in the same corner. The **Here** tab shows it; tap to walk, tap things to use them, tap people to talk.
+
 ## Screenshots
 
 Web build of the app at phone size (offline fallback, Austin fixtures):
@@ -19,9 +21,9 @@ Web build of the app at phone size (offline fallback, Austin fixtures):
 |---|---|---|---|
 | ![Title](docs/screenshots/title.png) | ![Character](docs/screenshots/new-game-member.png) | ![Live](docs/screenshots/live.png) | ![Actions](docs/screenshots/actions.png) |
 
-| Map | Phone | Sims | Journal |
+| Here (floor plan) | Map | Phone | Sims |
 |---|---|---|---|
-| ![Map](docs/screenshots/map.png) | ![Phone](docs/screenshots/phone.png) | ![Sims](docs/screenshots/sims.png) | ![Journal](docs/screenshots/journal.png) |
+| ![Here](docs/screenshots/here.png) | ![Map](docs/screenshots/map.png) | ![Phone](docs/screenshots/phone.png) | ![Sims](docs/screenshots/sims.png) |
 
 ## Stack
 

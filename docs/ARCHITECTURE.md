@@ -208,6 +208,16 @@ interface PlacesProvider {
 
 `gen/worldgen.ts` seeds a new game: pick region → fetch venues per archetype (nearest N) → create home lot → generate a population of NPCs attached to venues (staff), the neighborhood (neighbors), and institutions (teachers, doctors, police) → generate bios lazily on first meaningful contact.
 
+## 9b. Space layer (`src/engine/space`)
+
+Every venue has a **floor plan** (`VenueLayout`), generated on first use from its rooms and objects and stored in `state.layouts` so it never changes under the player. Generation is seeded by venue id (`layout:<venueId>:<version>`): rooms are packed into rows of a tile grid with shared walls and equal row heights, doors are cut between every pair of neighbours (the plan is always fully connected), and each object gets one tile in its room, along the walls first, never in front of a door and never boxing in a corner. Objects that arrive later (a purchase) are slotted in by `placeNewObjects`.
+
+Positions: `sim.location.pos` is stored when a sim walked or used something; otherwise `positionOf` derives it deterministically (next to the object they are using; the entrance for controlled sims; a stable idle tile per NPC and venue). So NPC placement is consistent without simulating their footsteps.
+
+Movement: `engine.moveTo / walkToObject / walkToSim` BFS over walkable tiles; walks longer than a few tiles cost minutes (`walkMinutes`). `perform` on an object walks the player over first (NPCs are simply stood next to it), and an in-person `startConversation` walks to the other sim. The LLM scene context states which room the actor and each NPC are in.
+
+UI: the **Here** tab renders the plan (`PlaceMap`): tap a tile to walk, an object to open its actions, a person to talk.
+
 ## 10. Save/Load
 
 `core/save.ts` serializes `WorldState` to JSON (version-stamped; migrations in `core/migrations.ts`). Store layer writes to AsyncStorage/FileSystem. Auto-save after every action.

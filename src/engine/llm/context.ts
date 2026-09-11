@@ -9,6 +9,7 @@ import { DEFAULT_ENVELOPE } from '../core/effects';
 import type { SceneSnapshot } from '../core/llmTypes';
 import { makeQuery } from '../core/query';
 import type { BioFact, Conversation, Relationship, Sim, SimId, Venue, VenueId, WorldState } from '../core/types';
+import { positionOf } from '../space/nav';
 import { haversineKm, kmToMiles } from '../core/util';
 import { recentMemories, relevantMemories } from './memory';
 
@@ -66,6 +67,7 @@ export interface ActorContext {
   aspiration?: string;
   currentAction?: string;
   skills: string[];
+  room?: string;
 }
 
 export interface NpcContext {
@@ -101,6 +103,8 @@ export interface NpcContext {
   /** not physically present; reachable only through the conversation channel */
   remote?: boolean;
   whereabouts?: string;
+  /** room inside the venue (from the floor plan) */
+  room?: string;
 }
 
 export interface SceneContext {
@@ -228,6 +232,15 @@ export function buildSceneContext(scene: SceneSnapshot, opts: BuildContextOption
     .slice(0, maxNpcs)
     .map((x) => x.s);
   const npcs = ranked.map((npc) => buildNpc(state, actor, npc, content, now, npc.id === opts.primaryId));
+  const layout = state.layouts?.[venue.id];
+  if (layout) {
+    const roomName = (id?: string) => layout.rooms.find((r) => r.id === id)?.name;
+    actorCtx.room = roomName(positionOf(state, layout, actor).roomId);
+    for (const n of npcs) {
+      const sim = state.sims[n.id];
+      if (sim) n.room = roomName(positionOf(state, layout, sim).roomId);
+    }
+  }
   for (const rs of remote) {
     const n = buildNpc(state, actor, rs, content, now, rs.id === opts.primaryId);
     n.remote = true;
@@ -655,11 +668,13 @@ export function renderSceneContext(ctx: SceneContext): string {
   if (a.skills.length) push(`- Notable skills: ${a.skills.join(', ')}`);
   if (a.inventory.length) push(`- Carrying: ${a.inventory.join(', ')}`);
   if (a.aspiration) push(`- Aspiration: ${a.aspiration}`);
+  if (a.room) push(`- Standing in: the ${a.room}`);
   if (a.currentAction) push(`- Was doing: ${a.currentAction}`);
 
   for (const n of ctx.npcs) {
     push('');
-    push(`## ${n.remote ? `NPC (addressed, NOT here: ${n.whereabouts ?? 'elsewhere'}; reachable only through this conversation)` : n.primary ? 'NPC (addressed)' : 'NPC present'}: ${n.name} (id ${n.id})`);
+    const where = n.room ? (n.room === a.room ? `, in the ${n.room} with ${a.firstName}` : `, in the ${n.room} (${a.firstName} is in the ${a.room ?? 'building'})`) : '';
+    push(`## ${n.remote ? `NPC (addressed, NOT here: ${n.whereabouts ?? 'elsewhere'}; reachable only through this conversation)` : n.primary ? `NPC (addressed${where})` : `NPC present${where}`}: ${n.name} (id ${n.id})`);
     push(`- ${n.age}, ${n.gender} (${n.pronouns})${n.role ? `; ${n.role}` : ''}; ${n.appearance}`);
     if (n.traits.length) push(`- Traits: ${n.traits.join(', ')}`);
     push(`- Personality: ${n.personality}`);

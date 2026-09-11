@@ -75,6 +75,10 @@ export interface GameState {
   endConversation(): void;
   resolveInterrupt(id: string, optionActionId?: string, params?: Record<string, unknown>): void;
   switchSim(id: SimId): void;
+  /** walk the active sim to a tile of the current floor plan */
+  moveTo(x: number, y: number): void;
+  walkToObject(objectId: string): void;
+  walkToSim(simId: SimId): void;
   toggleAutonomy(id: SimId): void;
   toggleFavorite(venueId: VenueId): void;
   pushToast(text: string, kind?: ToastItem['kind']): void;
@@ -466,6 +470,41 @@ export const useGame = create<GameState>((set, get) => ({
       const exists = engine.findAction(simId, optionActionId);
       if (exists) get().perform(optionActionId, params);
     }
+  },
+
+  moveTo(x, y) {
+    const { engine, busy } = get();
+    if (!engine || busy) return;
+    const res = engine.moveTo(engine.state.player.activeSimId, x, y);
+    if (!res.ok) {
+      get().pushToast(res.reason ?? "You can't go there.", 'warning');
+      return;
+    }
+    haptic.select();
+    set({ version: get().version + 1 });
+    scheduleSave(get);
+  },
+
+  walkToObject(objectId) {
+    const { engine, busy } = get();
+    if (!engine || busy) return;
+    const res = engine.walkToObject(engine.state.player.activeSimId, objectId as never);
+    if (!res.ok) {
+      get().pushToast(res.reason ?? "You can't get there.", 'warning');
+      return;
+    }
+    set({ version: get().version + 1 });
+  },
+
+  walkToSim(simId) {
+    const { engine, busy } = get();
+    if (!engine || busy) return;
+    const res = engine.walkToSim(engine.state.player.activeSimId, simId);
+    if (!res.ok) {
+      get().pushToast(res.reason ?? "You can't get there.", 'warning');
+      return;
+    }
+    set({ version: get().version + 1 });
   },
 
   switchSim(id) {

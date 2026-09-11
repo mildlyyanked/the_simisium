@@ -9,6 +9,7 @@ import { clockInfo, type ClockInfo, type HolidayResolver } from './clock';
 import { addMoodlet, applyEffects, DEFAULT_ENVELOPE, transact, validateEffects, type EffectContext, type ValidationEnvelope } from './effects';
 import { EventBus, type GameEvent } from './events';
 import { newConversationId, newEventId, shortId } from './ids';
+import { adjacentFree, ensureLayout, findPath, nearestWalkable, positionOf, roomAt, walkMinutes, type Tile } from '../space';
 import type { InteractionOutcome, LLMService, SceneSnapshot } from './llmTypes';
 import { makeQuery, simName } from './query';
 import { RNG } from './rng';
@@ -223,6 +224,7 @@ export class Engine {
         const t = sim.travel;
         sim.travel = undefined;
         sim.location = { venueId: t.toVenueId, arrivedAt: minute };
+        this.spawnAtEntrance(sim);
         this.bus.emit({ type: 'transport:arrived', simId: sim.id, venueId: t.toVenueId, mode: t.mode });
         this.bus.emit({ type: 'sim:arrived', simId: sim.id, venueId: t.toVenueId });
       }
@@ -329,6 +331,7 @@ export class Engine {
     const target = action.target?.id;
     const objectId = action.target?.kind === 'object' ? (action.target.id as import('./types').ObjectId) : undefined;
     const obj = objectId ? this.state.objects[objectId] : undefined;
+    if (obj && obj.venueId === sim.location.venueId) this.stepToObject(sim, obj.id, this.state.player.controlledSimIds.includes(simId));
 
     // consume ingredients up front
     const consumes = merged.consumes as { itemId: string; qty: number }[] | undefined;
@@ -435,6 +438,7 @@ export class Engine {
     const venue = this.query.venue(actor.location.venueId);
     const present = this.query.simsAt(venue.id).filter((s) => s.id !== simId);
     const conversation = conversationId ? this.state.conversations[conversationId as import('./types').ConversationId] : undefined;
+    this.layoutOf(venue.id);
     return { state: this.state, actor, venue, present, conversation };
   }
 
@@ -464,6 +468,10 @@ export class Engine {
     const actor = this.query.sim(simId);
     const existing = Object.values(this.state.conversations).find((c) => c.active && c.participantIds.includes(simId) && otherIds.every((o) => c.participantIds.includes(o)) && c.channel === channel);
     if (existing) return existing;
+    if (channel === 'in_person' && this.state.player.controlledSimIds.includes(simId)) {
+      const other = otherIds.map((o) => this.state.sims[o]).find((o) => o && o.location.venueId === actor.location.venueId);
+      if (other) this.walkToSim(simId, other.id);
+    }
     const conv: Conversation = { id: newConversationId(this.rng), participantIds: [simId, ...otherIds], venueId: actor.location.venueId, startedAt: this.now, lastTurnAt: this.now, turns: [], channel, active: true, topic };
     this.state.conversations[conv.id] = conv;
     this.state.stats.conversations += 1;
@@ -611,6 +619,123 @@ export class Engine {
   }
 
   // ---------------------------------------------------------------------
+  // Space: floor plans and walking around inside a venue
+  // ---------------------------------------------------------------------
+  /** The floor plan of a venue (generated on first use). */
+  layoutOf(venueId: VenueId): import('./types').VenueLayout | undefined {
+    return ensureLayout(this.state, venueId);
+  }
+
+  /** Where a sim stands inside their venue. */
+  positionOf(simId: SimId): (Tile & { roomId?: string }) | undefined {
+    const sim = this.state.sims[simId];
+    if (!sim) return undefined;
+    const layout = this.layoutOf(sim.location.venueId);
+    return layout ? positionOf(this.state, layout, sim) : undefined;
+  }
+
+  roomNameOf(simId: SimId): string | undefined {
+    const sim = this.state.sims[simId];
+    if (!sim) return undefined;
+    const layout = this.layoutOf(sim.location.venueId);
+    if (!layout) return undefined;
+    const p = positionOf(this.state, layout, sim);
+    return layout.rooms.find((r) => r.id === p.roomId)?.name;
+  }
+
+  private spawnAtEntrance(sim: Sim): void {
+    if (!this.state.player.controlledSimIds.includes(sim.id)) return;
+    const layout = this.layoutOf(sim.location.venueId);
+    if (!layout) return;
+    const e = layout.entranceInside;
+    sim.location.pos = { x: e.x, y: e.y };
+    sim.location.roomId = roomAt(layout, e.x, e.y)?.id;
+  }
+
+  /** Walk a controlled sim to a tile; time passes for real walks. */
+  moveTo(simId: SimId, x: number, y: number): PerformResult {
+    const sim = this.state.sims[simId];
+    if (!sim) return { ok: false, reason: 'Unknown sim', minutes: 0 };
+    if (sim.travel) return { ok: false, reason: 'You are on the way somewhere.', minutes: 0 };
+    const layout = this.layoutOf(sim.location.venueId);
+    if (!layout) return { ok: false, reason: 'No floor plan here.', minutes: 0 };
+    const dest = nearestWalkable(layout, x, y);
+    if (!dest) return { ok: false, reason: "You can't stand there.", minutes: 0 };
+    const from = positionOf(this.state, layout, sim);
+    const path = findPath(layout, from, dest);
+    if (!path) return { ok: false, reason: "There's no way through.", minutes: 0 };
+    const fromRoom = from.roomId;
+    const minutes = walkMinutes(path.length);
+    if (sim.currentAction && sim.currentAction.interruptible !== false && path.length > 0) {
+      this.bus.emit({ type: 'action:interrupted', simId, actionId: sim.currentAction.actionId, reason: 'walked away' });
+      sim.currentAction = undefined;
+    }
+    sim.location.pos = { x: dest.x, y: dest.y };
+    const room = roomAt(layout, dest.x, dest.y);
+    sim.location.roomId = room?.id;
+    const advanced = minutes > 0 ? this.advance(minutes, { silent: true }) : 0;
+    if (room && room.id !== fromRoom && this.state.player.controlledSimIds.includes(simId)) this.log({ text: `You go to the ${room.name.toLowerCase()}.`, kind: 'travel', simId, venueId: sim.location.venueId, importance: 0 });
+    this.notify();
+    return { ok: true, minutes: advanced, text: room ? room.name : undefined };
+  }
+
+  /** Walk next to an object in the same venue. */
+  walkToObject(simId: SimId, objectId: import('./types').ObjectId): PerformResult {
+    const sim = this.state.sims[simId];
+    const obj = this.state.objects[objectId];
+    if (!sim || !obj || obj.venueId !== sim.location.venueId) return { ok: false, reason: 'Not here.', minutes: 0 };
+    const layout = this.layoutOf(sim.location.venueId);
+    const p = layout?.objects[objectId];
+    if (!layout || !p) return { ok: false, reason: 'No floor plan here.', minutes: 0 };
+    const from = positionOf(this.state, layout, sim);
+    const spots = adjacentFree(layout, p.x, p.y);
+    if (spots.some((t) => t.x === from.x && t.y === from.y)) return { ok: true, minutes: 0 };
+    let best: { tile: Tile; len: number } | undefined;
+    for (const t of spots) {
+      const path = findPath(layout, from, t);
+      if (path && (!best || path.length < best.len)) best = { tile: t, len: path.length };
+    }
+    if (!best) return { ok: false, reason: "You can't get to it.", minutes: 0 };
+    return this.moveTo(simId, best.tile.x, best.tile.y);
+  }
+
+  /** Walk next to another sim in the same venue. */
+  walkToSim(simId: SimId, otherId: SimId): PerformResult {
+    const sim = this.state.sims[simId];
+    const other = this.state.sims[otherId];
+    if (!sim || !other || other.location.venueId !== sim.location.venueId) return { ok: false, reason: "They aren't here.", minutes: 0 };
+    const layout = this.layoutOf(sim.location.venueId);
+    if (!layout) return { ok: false, reason: 'No floor plan here.', minutes: 0 };
+    const from = positionOf(this.state, layout, sim);
+    const at = positionOf(this.state, layout, other);
+    if (Math.abs(at.x - from.x) + Math.abs(at.y - from.y) <= 1) return { ok: true, minutes: 0 };
+    const spots = adjacentFree(layout, at.x, at.y).filter((t) => !(t.x === at.x && t.y === at.y));
+    let best: { tile: Tile; len: number } | undefined;
+    for (const t of spots) {
+      const path = findPath(layout, from, t);
+      if (path && (!best || path.length < best.len)) best = { tile: t, len: path.length };
+    }
+    if (!best) return { ok: false, reason: "You can't get to them.", minutes: 0 };
+    return this.moveTo(simId, best.tile.x, best.tile.y);
+  }
+
+  /** Stand next to an object about to be used (time passes only for the player's walks). */
+  private stepToObject(sim: Sim, objectId: import('./types').ObjectId, timed: boolean): void {
+    const layout = this.layoutOf(sim.location.venueId);
+    const p = layout?.objects[objectId];
+    if (!layout || !p) return;
+    if (timed) {
+      this.walkToObject(sim.id, objectId);
+      return;
+    }
+    const spot = adjacentFree(layout, p.x, p.y)[0];
+    if (spot) {
+      sim.location.pos = { x: spot.x, y: spot.y };
+      sim.location.roomId = roomAt(layout, spot.x, spot.y)?.id;
+    }
+  }
+
+  // ---------------------------------------------------------------------
   // Player control
   // ---------------------------------------------------------------------
   setActiveSim(simId: SimId): void {
@@ -625,6 +750,7 @@ export class Engine {
     const from = sim.location.venueId;
     sim.location = { venueId, arrivedAt: this.now };
     sim.travel = undefined;
+    this.spawnAtEntrance(sim);
     this.bus.emit({ type: 'sim:moved', simId, from, to: venueId });
     this.bus.emit({ type: 'sim:arrived', simId, venueId });
     this.notify();

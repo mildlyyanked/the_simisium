@@ -352,6 +352,7 @@ export function makeEmptyWorld(o: { seed: string; epoch: string; region?: Partia
     scheduled: [],
     log: [],
     conversations: {},
+    layouts: {},
     rngState: [],
     stats: { daysPlayed: 0, actionsTaken: 0, moneyEarned: 0, moneySpent: 0, conversations: 0, simsMet: 0, placesVisited: 0, arrests: 0, promotions: 0, births: 0, deaths: 0 },
     placesCache: {},

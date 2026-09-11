@@ -901,6 +901,36 @@ export interface SimLocation {
   venueId: VenueId;
   roomId?: string;
   arrivedAt: number;
+  /** tile position inside the venue's floor plan (see VenueLayout); derived when absent */
+  pos?: { x: number; y: number };
+}
+
+// ---------------------------------------------------------------------------
+// Floor plans: a deterministic tile layout per venue so people and objects have places
+// ---------------------------------------------------------------------------
+export interface LayoutRoom {
+  id: string;
+  name: string;
+  /** rect in tiles, walls included (the border ring is wall) */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface VenueLayout {
+  venueId: VenueId;
+  version: number;
+  width: number;
+  height: number;
+  rooms: LayoutRoom[];
+  /** wall tiles that are passable */
+  doors: { x: number; y: number }[];
+  /** the door to the outside, and the floor tile just inside it */
+  entrance: { x: number; y: number };
+  entranceInside: { x: number; y: number };
+  /** object tile positions (one tile per object) */
+  objects: Record<ObjectId, { x: number; y: number }>;
 }
 
 export type TravelMode = 'walk' | 'bike' | 'drive' | 'transit' | 'rideshare' | 'taxi' | 'carpool' | 'scooter' | 'fly';
@@ -1456,6 +1486,8 @@ export interface WorldState {
   scheduled: ScheduledEvent[];
   log: LogEntry[];
   conversations: Record<ConversationId, Conversation>;
+  /** floor plans, generated lazily and kept so they stay consistent */
+  layouts: Record<VenueId, VenueLayout>;
   rngState: number[];
   stats: WorldStats;
   /** places cache: placeId → data (so worlds stay stable offline) */

@@ -10,6 +10,7 @@ import { clockShort } from '@/ui/format';
 
 const TABS: { name: string; label: string; icon: string; iconActive: string }[] = [
   { name: 'live', label: 'Live', icon: 'book-open-outline', iconActive: 'book-open-page-variant' },
+  { name: 'here', label: 'Here', icon: 'floor-plan', iconActive: 'floor-plan' },
   { name: 'map', label: 'Map', icon: 'map-outline', iconActive: 'map' },
   { name: 'phone', label: 'Phone', icon: 'cellphone', iconActive: 'cellphone' },
   { name: 'sims', label: 'Sims', icon: 'account-group-outline', iconActive: 'account-group' },
@@ -83,6 +84,7 @@ export default function GameLayout(): React.ReactElement {
   return (
     <Tabs tabBar={(props) => <TabBar state={props.state} navigation={props.navigation as unknown as TabBarProps['navigation']} />} screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: t.colors.background }, lazy: true }}>
       <Tabs.Screen name="live" options={{ title: 'Live' }} />
+      <Tabs.Screen name="here" options={{ title: 'Here' }} />
       <Tabs.Screen name="map" options={{ title: 'Map' }} />
       <Tabs.Screen name="phone" options={{ title: 'Phone' }} />
       <Tabs.Screen name="sims" options={{ title: 'Sims' }} />
