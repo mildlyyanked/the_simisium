@@ -62,8 +62,11 @@ Keys are stored with `expo-secure-store` on device (AsyncStorage on web) and are
 | Scene / venue narration | `google/gemini-2.5-flash-lite` | high volume, flavor only, no effects |
 | Memory summarization | `anthropic/claude-haiku-4.5` | rare, cheap |
 | Weekly story director | `anthropic/claude-opus-5` | rare, high leverage |
+| Character portraits (on demand) | `google/gemini-2.5-flash-image` | any OpenRouter model that outputs images; a few cents per portrait |
 
 Presets in Settings: **Balanced** (above), **Quality** (Sonnet 5 dialogue, Opus 5 adjudication/bios), **Budget** (Gemini 2.5 Flash for dialogue/adjudication, DeepSeek V3.2 for bios). Model ids are OpenRouter slugs and can be overridden per task; Settings → "Test connection" validates them against OpenRouter's model list. A per-save budget cap stops calls once reached.
+
+Ordinary world interactions never touch a model: "go to work", "take a shower", "make breakfast", "drive home" and the like are routed to the simulation's own deterministic actions (and offered as one-tap chips when they fit the moment), so the daily loop behaves the same every time. The model is reserved for what needs a human in the loop: conversations and open-ended attempts.
 
 Every LLM output is a typed JSON document (zod-validated) whose effects pass through the same `validateEffects` envelope as scripted actions: a conversation can move a relationship by a bounded amount, hand over an item the NPC actually has, or start a fight — it cannot print money or teleport. The narrator sees a compact scene snapshot (venue, Google data, who is present with the facts you have discovered about them, your needs/mood, recent memories), and every NPC's revealed bio facts are frozen once discovered so characters stay consistent across sessions.
 

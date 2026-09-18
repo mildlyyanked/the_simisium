@@ -17,6 +17,7 @@ import * as dialoguePrompt from './prompts/dialogue';
 import * as directorPrompt from './prompts/director';
 import * as narratePrompt from './prompts/narrate';
 import * as npcMessagePrompt from './prompts/npcMessage';
+import { portraitPrompt } from './prompts/portrait';
 import * as summarizePrompt from './prompts/summarize';
 import { BioSchema, DirectorSchema, InteractionOutcomeSchema, InteractionOutcomeWireSchema, NpcMessageSchema, normalizeOutcomeShape, toJsonSchema, type InteractionOutcomeOut } from './schemas';
 
@@ -242,6 +243,13 @@ export class OpenRouterLLMService implements LLMService {
       this.failed('dialogue', err);
       return this.fallback.npcMessage(state, from, to, reason);
     }
+  }
+
+  async generatePortrait(state: WorldState, sim: Sim): Promise<{ dataUrl: string; usage: LLMUsage }> {
+    const model = this.client.config.imageModel || 'google/gemini-2.5-flash-image';
+    const res = await this.client.generateImage(portraitPrompt(state, sim), model);
+    this.report(res.usage);
+    return { dataUrl: res.dataUrl, usage: res.usage };
   }
 
   async direct(state: WorldState): Promise<{ beats: { label: string; simId?: SimId; inMinutes: number; kind: string; payload?: Record<string, unknown> }[] }> {

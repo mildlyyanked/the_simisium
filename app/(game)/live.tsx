@@ -48,6 +48,23 @@ export default function LiveScreen(): React.ReactElement {
   }, [sim, conversation]);
 
   const nextEvent = useMemo(() => engine?.state.scheduled.find((e) => e.visible && e.atMinute > engine.state.time.minute), [engine, version]);
+  const quick = useMemo(() => {
+    if (!engine || !sim || conversation) return [];
+    try {
+      return engine.quickActions(sim.id).map((q) => ({
+        label: q.label,
+        icon: q.icon,
+        onPress: () => {
+          if (q.actionId) perform(q.actionId, q.params);
+          else if (q.waitMinutes) wait(q.waitMinutes);
+          else if (q.text) void freeform(q.text);
+        },
+      }));
+    } catch {
+      return [];
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine, sim, conversation, version]);
 
   const onSubmit = useCallback(
     (text: string, mode: 'do' | 'say') => {
@@ -161,7 +178,8 @@ export default function LiveScreen(): React.ReactElement {
         <Composer
           mode={conversation ? 'say' : 'do'}
           lockMode
-          suggestions={conversation ? followUps : followUps.length ? followUps : ['Look around', 'Check my phone', 'Make something to eat']}
+          suggestions={conversation ? followUps : followUps}
+          quickActions={conversation ? [] : quick}
           onSubmit={onSubmit}
           disabled={busy || !!interrupt}
           placeholder={conversation ? `Say something to ${partner?.identity.firstName ?? 'them'}…` : 'What do you do?'}

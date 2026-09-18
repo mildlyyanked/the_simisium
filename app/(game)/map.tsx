@@ -97,6 +97,14 @@ export default function MapScreen(): React.ReactElement {
   }
   const sel = selected ? engine.state.venues[selected] : undefined;
   const travelActions = sel ? actions.filter((a) => a.action.id.startsWith(`travel:${sel.id}:`)) : [];
+  const carElsewhere = useMemo(() => {
+    if (!engine || !sim || !sel) return null;
+    const hh = sim.householdId ? engine.state.households[sim.householdId] : undefined;
+    if (!hh) return null;
+    const car = hh.vehicleIds.map((id) => engine.state.vehicles[id]).find((v) => v && (v.kind === 'car' || v.kind === 'suv' || v.kind === 'truck' || v.kind === 'van') && v.location.venueId !== sim.location.venueId);
+    if (!car) return null;
+    return { vehicle: `${car.make} ${car.model}`, where: engine.state.venues[car.location.venueId]?.name ?? 'somewhere else' };
+  }, [engine, sim, sel]);
   const known = sel ? engine.ctx().query.simsAt(sel.id).filter((s) => s.id !== sim.id && sim.relationships[s.id]) : [];
   const staff = sel ? sel.staffSimIds.map((id) => engine.state.sims[id]).filter((s) => s && sim.relationships[s.id]) : [];
   const isFav = sel ? engine.state.player.favorites.includes(sel.id) : false;
@@ -169,6 +177,11 @@ export default function MapScreen(): React.ReactElement {
             {sel.id !== here.id ? (
               <View style={{ gap: 8 }}>
                 <SectionHeader title="Go here" />
+                {carElsewhere ? (
+                  <Text variant="caption" faint style={{ marginBottom: 6 }}>
+                    Your {carElsewhere.vehicle} is parked at {carElsewhere.where}. Get back to it to drive.
+                  </Text>
+                ) : null}
                 {travelActions.length === 0 ? (
                   <Text variant="caption" muted>
                     No way to get there right now.

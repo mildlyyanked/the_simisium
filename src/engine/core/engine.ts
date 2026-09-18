@@ -10,6 +10,7 @@ import { addMoodlet, applyEffects, DEFAULT_ENVELOPE, transact, validateEffects, 
 import { EventBus, type GameEvent } from './events';
 import { newConversationId, newEventId, shortId } from './ids';
 import { adjacentFree, ensureLayout, findPath, nearestWalkable, positionOf, roomAt, walkMinutes, type Tile } from '../space';
+import { quickActions, resolveIntent, type QuickAction } from './intents';
 import type { InteractionOutcome, LLMService, SceneSnapshot } from './llmTypes';
 import { makeQuery, simName } from './query';
 import { RNG } from './rng';
@@ -224,6 +225,7 @@ export class Engine {
         const t = sim.travel;
         sim.travel = undefined;
         sim.location = { venueId: t.toVenueId, arrivedAt: minute };
+        if (t.vehicleId && this.state.vehicles[t.vehicleId]) this.state.vehicles[t.vehicleId].location = { venueId: t.toVenueId };
         this.spawnAtEntrance(sim);
         this.bus.emit({ type: 'transport:arrived', simId: sim.id, venueId: t.toVenueId, mode: t.mode });
         this.bus.emit({ type: 'sim:arrived', simId: sim.id, venueId: t.toVenueId });
@@ -541,7 +543,30 @@ export class Engine {
     const sim = this.state.sims[simId];
     if (!sim) return { ok: false, reason: 'Unknown sim', minutes: 0 };
     if (!this.llm) return { ok: false, reason: 'LLM not configured', minutes: 0 };
-    for (const p of this.query.simsAt(sim.location.venueId)) if (p.id !== simId && !p.bio.generated && sim.relationships[p.id]) await this.ensureBio(p.id);
+    const presentNow = this.query.simsAt(sim.location.venueId).filter((p) => p.id !== simId);
+    const intent = resolveIntent(this.state, sim, this.actionsFor(simId), text, presentNow);
+    if (intent) {
+      this.log({ text: `You: ${text}`, kind: 'narrative', simId, venueId: sim.location.venueId, importance: 1, meta: { intent: intent.via } });
+      if (intent.actionId === 'system:noop') {
+        this.log({ text: intent.label, kind: 'narrative', simId, venueId: sim.location.venueId, importance: 1 });
+        this.notify();
+        return { ok: true, text: intent.label, minutes: 0 };
+      }
+      if (intent.actionId === 'system:wait') {
+        const r = this.wait(intent.waitMinutes ?? 30);
+        return { ...r, text: intent.label };
+      }
+      const r = this.perform(simId, intent.actionId, intent.params);
+      if (r.ok) {
+        const done = r.text ?? `${intent.label.replace(/\s*\(.*\)$/, '')}.`;
+        this.log({ text: done.charAt(0).toUpperCase() + done.slice(1), kind: 'narrative', simId, venueId: sim.location.venueId, importance: 1, meta: { intent: intent.via } });
+        this.notify();
+        return { ...r, text: done, data: { ...(r.data ?? {}), intent: intent.via } };
+      }
+      this.log({ text: r.reason ?? 'That didn’t work.', kind: 'narrative', simId, venueId: sim.location.venueId, importance: 1 });
+      return r;
+    }
+    for (const p of presentNow) if (!p.bio.generated && sim.relationships[p.id]) await this.ensureBio(p.id);
     const scene = this.scene(simId);
     this.log({ text: `You try: ${text}`, kind: 'narrative', simId, venueId: sim.location.venueId, importance: 1 });
     let outcome: InteractionOutcome;
@@ -621,6 +646,13 @@ export class Engine {
   // ---------------------------------------------------------------------
   // Space: floor plans and walking around inside a venue
   // ---------------------------------------------------------------------
+  /** Contextual one-tap actions for the composer. */
+  quickActions(simId: SimId): QuickAction[] {
+    const sim = this.state.sims[simId];
+    if (!sim) return [];
+    return quickActions(this.state, sim, this.actionsFor(simId));
+  }
+
   /** The floor plan of a venue (generated on first use). */
   layoutOf(venueId: VenueId): import('./types').VenueLayout | undefined {
     return ensureLayout(this.state, venueId);

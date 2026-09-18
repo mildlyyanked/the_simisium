@@ -15,6 +15,8 @@ export interface SettingsState {
   googlePlacesKey: string;
   modelPreset: ModelPreset;
   modelOverrides: Partial<Record<LLMTask, string>>;
+  /** OpenRouter model used for character portraits (must output images) */
+  imageModel: string;
   budgetUsd: number;
   textSize: number; // 0.9 .. 1.3 multiplier
   haptics: boolean;
@@ -25,7 +27,7 @@ export interface SettingsState {
   keysVersion: number;
   hydrate(): Promise<void>;
   setKey(which: 'openRouterKey' | 'googlePlacesKey', value: string): Promise<void>;
-  update(patch: Partial<Pick<SettingsState, 'modelPreset' | 'modelOverrides' | 'budgetUsd' | 'textSize' | 'haptics' | 'autoAdvanceWhenIdle' | 'reduceMotion' | 'autonomyDefault'>>): Promise<void>;
+  update(patch: Partial<Pick<SettingsState, 'modelPreset' | 'modelOverrides' | 'imageModel' | 'budgetUsd' | 'textSize' | 'haptics' | 'autoAdvanceWhenIdle' | 'reduceMotion' | 'autonomyDefault'>>): Promise<void>;
 }
 
 const SETTINGS_KEY = 'simisium:settings';
@@ -74,6 +76,7 @@ async function writeSecret(name: string, value: string): Promise<void> {
 const DEFAULTS = {
   modelPreset: 'balanced' as ModelPreset,
   modelOverrides: {} as Partial<Record<LLMTask, string>>,
+  imageModel: 'google/gemini-2.5-flash-image',
   budgetUsd: 5,
   textSize: 1,
   haptics: true,
@@ -115,6 +118,7 @@ export const useSettings = create<SettingsState>((set, get) => ({
     const persisted: typeof DEFAULTS = {
       modelPreset: s.modelPreset,
       modelOverrides: s.modelOverrides,
+      imageModel: s.imageModel,
       budgetUsd: s.budgetUsd,
       textSize: s.textSize,
       haptics: s.haptics,
@@ -127,7 +131,7 @@ export const useSettings = create<SettingsState>((set, get) => ({
     } catch (err) {
       console.warn('[settings] persist failed', err);
     }
-    if (patch.modelPreset !== undefined || patch.modelOverrides !== undefined || patch.budgetUsd !== undefined) set({ keysVersion: get().keysVersion + 1 });
+    if (patch.modelPreset !== undefined || patch.modelOverrides !== undefined || patch.imageModel !== undefined || patch.budgetUsd !== undefined) set({ keysVersion: get().keysVersion + 1 });
   },
 }));
 

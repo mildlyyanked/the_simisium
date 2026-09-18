@@ -30,6 +30,7 @@ export function buildLLM(onUsage?: (u: LLMUsage) => void): { llm?: LLMService; w
       apiKey: s.openRouterKey || undefined,
       models: s.modelOverrides,
       preset: s.modelPreset,
+      imageModel: s.imageModel,
       budgetUsd: s.budgetUsd,
       content: CONTENT,
       onUsage,

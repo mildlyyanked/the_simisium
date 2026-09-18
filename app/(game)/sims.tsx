@@ -7,9 +7,31 @@ import type { BioCategory, Sim, SimId } from '@engine/core/types';
 import { CONTENT } from '@engine/content';
 import { Screen, Text, Button, Card, Tabs, KeyValue, SimAvatar, Chip, ChipRow, SkillRing, NeedsGrid, MoodBadge, MoodletList, RelationshipMeter, relationshipSummary, Sheet, SectionHeader, EmptyState, Pill, MoneyText, ProgressBar, Icon } from '@/ui/components';
 import { NEED_META, useTheme } from '@/ui/theme';
+import { usePortraits } from '@/store/portraits';
 import { clockShort, dayLabelShort, money } from '@/ui/format';
 
 const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
+function PortraitButton({ sim }: { sim: Sim }): React.ReactElement {
+  const generating = usePortraits((p) => !!p.generating[sim.id]);
+  const has = usePortraits((p) => !!p.uris[sim.id]);
+  const lastError = usePortraits((p) => p.lastError);
+  const generate = usePortraits((p) => p.generate);
+  const pushToast = useGame((g) => g.pushToast);
+  return (
+    <Button
+      title={generating ? 'Painting…' : has ? 'New portrait' : 'Generate portrait'}
+      icon="camera-outline"
+      size="sm"
+      variant="secondary"
+      loading={generating}
+      onPress={async () => {
+        const ok = await generate(sim.id);
+        if (!ok) pushToast(usePortraits.getState().lastError ?? lastError ?? 'Could not generate a portrait.', 'warning');
+      }}
+    />
+  );
+}
 
 type Tab = 'household' | 'people' | 'pets' | 'vehicles';
 const BIO_LABEL: Record<BioCategory, string> = { origin: 'Origins', family: 'Family', childhood: 'Childhood', education: 'Education', career: 'Work', romance: 'Romance', health: 'Health', money: 'Money', hobby: 'Hobbies', belief: 'Beliefs', secret: 'Secrets', fear: 'Fears', dream: 'Dreams', habit: 'Habits', quirk: 'Quirks', relationship: 'Relationships', trauma: 'Hard times', achievement: 'Achievements', daily_life: 'Daily life', opinion: 'Opinions' };
@@ -35,6 +57,9 @@ function CharacterSheet({ sim }: { sim: Sim }): React.ReactElement {
           <Text variant="caption" muted>
             {age} · {sim.identity.pronouns} · {sim.lifeStage.replace('_', ' ')}
           </Text>
+          <View style={{ flexDirection: 'row', marginTop: 6 }}>
+            <PortraitButton sim={sim} />
+          </View>
           <View style={{ flexDirection: 'row', gap: 6, marginTop: 4, alignItems: 'center' }}>
             <MoodBadge emotion={sim.mind.dominantEmotion} mood={sim.mind.mood} size="sm" />
             {!sim.body.alive ? <Pill label="Deceased" color={t.colors.danger} /> : null}
@@ -189,6 +214,9 @@ function Profile({ sim, viewer }: { sim: Sim; viewer: Sim }): React.ReactElement
           <Text variant="caption" faint>
             {relationshipSummary(rel)} · {sameVenue ? 'Here with you' : sim.travel ? 'On the move' : `Last seen: ${where?.name ?? 'unknown'}`}
           </Text>
+          <View style={{ flexDirection: 'row', marginTop: 6 }}>
+            <PortraitButton sim={sim} />
+          </View>
         </View>
       </View>
       <RelationshipMeter rel={rel} />

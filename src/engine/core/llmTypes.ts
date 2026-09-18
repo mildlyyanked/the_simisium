@@ -72,6 +72,8 @@ export interface LLMService {
   describeVenue(state: WorldState, venue: Venue): Promise<string>;
   /** NPC-initiated outreach (text message / call content) */
   npcMessage(state: WorldState, from: Sim, to: Sim, reason: string): Promise<string>;
+  /** A realistic portrait photo (data URL) from an image-capable model; absent when no key is configured. */
+  generatePortrait?(state: WorldState, sim: Sim): Promise<{ dataUrl: string; usage: LLMUsage }>;
   /** Weekly story direction (optional). */
   direct?(state: WorldState): Promise<{ beats: { label: string; simId?: SimId; inMinutes: number; kind: string; payload?: Record<string, unknown> }[] }>;
 }

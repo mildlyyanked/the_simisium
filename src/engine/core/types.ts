@@ -1135,6 +1135,8 @@ export interface Identity {
     distinguishing: string[];
     /** procedural avatar params */
     avatar: AvatarParams;
+    /** set once a realistic portrait was generated (the image itself lives outside the save) */
+    portrait?: 'generated';
   };
   voice: string;
   hometown: string;

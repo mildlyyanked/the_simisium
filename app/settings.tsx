@@ -113,6 +113,7 @@ export default function SettingsScreen(): React.ReactElement {
   const llmUsage = useGame((g) => g.llmUsage);
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [overrideTask, setOverrideTask] = useState<LLMTask | null>(null);
+  const [imagePicker, setImagePicker] = useState(false);
 
   const testLLM = async () => {
     const { llm, warning } = buildLLM();
@@ -168,6 +169,10 @@ export default function SettingsScreen(): React.ReactElement {
             />
           ))}
         </View>
+      </Card>
+      <SectionHeader title="Portraits" />
+      <Card>
+        <ListRow title="Portrait model" subtitle={`${s.imageModel} · generates a realistic photo of a character on demand (Sims tab)`} chevron last onPress={() => setImagePicker(true)} />
       </Card>
 
       <SectionHeader title="Spending cap" />
@@ -248,6 +253,16 @@ export default function SettingsScreen(): React.ReactElement {
         </View>
       </Dialog>
 
+      <ModelPicker
+        visible={imagePicker}
+        onClose={() => setImagePicker(false)}
+        title="Portrait model"
+        value={s.imageModel}
+        presetModel="google/gemini-2.5-flash-image"
+        apiKey={s.openRouterKey || undefined}
+        imagesOnly
+        onSelect={(id) => void s.update({ imageModel: id ?? 'google/gemini-2.5-flash-image' })}
+      />
       <ModelPicker
         visible={!!overrideTask}
         onClose={() => setOverrideTask(null)}

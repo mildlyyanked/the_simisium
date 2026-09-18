@@ -65,9 +65,11 @@ export interface ModelPickerProps {
   presetModel: string;
   apiKey?: string;
   onSelect: (modelId: string | undefined) => void;
+  /** only list models that can output images */
+  imagesOnly?: boolean;
 }
 
-export function ModelPicker({ visible, onClose, title, value, presetModel, apiKey, onSelect }: ModelPickerProps): React.ReactElement | null {
+export function ModelPicker({ visible, onClose, title, value, presetModel, apiKey, onSelect, imagesOnly }: ModelPickerProps): React.ReactElement | null {
   const t = useTheme();
   const [query, setQuery] = useState('');
   const [models, setModels] = useState<OpenRouterModelInfo[] | null>(memory?.models ?? null);
@@ -98,14 +100,15 @@ export function ModelPicker({ visible, onClose, title, value, presetModel, apiKe
     if (!models) return [];
     const q = query.trim().toLowerCase();
     const terms = q.split(/\s+/).filter(Boolean);
-    const list = terms.length ? models.filter((m) => terms.every((term) => m.id.toLowerCase().includes(term) || (m.name ?? '').toLowerCase().includes(term))) : models;
+    const pool = imagesOnly ? models.filter((m) => m.outputModalities?.includes('image')) : models;
+    const list = terms.length ? pool.filter((m) => terms.every((term) => m.id.toLowerCase().includes(term) || (m.name ?? '').toLowerCase().includes(term))) : pool;
     // structured-output capable models first, then the rest; both alphabetical
     return [...list].sort((a, b) => {
       const sa = a.supportedParameters?.includes('response_format') ? 0 : 1;
       const sb = b.supportedParameters?.includes('response_format') ? 0 : 1;
       return sa - sb || a.id.localeCompare(b.id);
     });
-  }, [models, query]);
+  }, [models, query, imagesOnly]);
 
   const Row = ({ id, name, sub, selected, onPress, icon }: { id: string; name?: string; sub?: string; selected: boolean; onPress: () => void; icon?: string }) => (
     <Pressable
@@ -128,7 +131,7 @@ export function ModelPicker({ visible, onClose, title, value, presetModel, apiKe
   );
 
   return (
-    <Sheet visible={visible} onClose={onClose} title={title} subtitle="OpenRouter catalog · tap a model to use it for this task" flush maxHeight={0.92}>
+    <Sheet visible={visible} onClose={onClose} title={title} subtitle={imagesOnly ? 'OpenRouter models that output images' : 'OpenRouter catalog · tap a model to use it for this task'} flush maxHeight={0.92}>
       <View style={{ paddingHorizontal: 14, paddingBottom: 8 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: t.colors.surfaceRaised, borderRadius: t.radii.lg, borderWidth: 1, borderColor: t.colors.border, paddingHorizontal: 12, height: 42 }}>
           <Icon name="magnify" size={18} color={t.colors.textFaint} />
@@ -182,7 +185,7 @@ export function ModelPicker({ visible, onClose, title, value, presetModel, apiKe
             <Row
               id={item.id}
               name={item.name}
-              sub={`${perMillion(item.pricing?.prompt)} in · ${perMillion(item.pricing?.completion)} out per 1M${item.contextLength ? ` · ${ctxLabel(item.contextLength)}` : ''}`}
+              sub={item.outputModalities?.includes('image') && item.pricing?.image ? `~$${(item.pricing.image * 1000).toFixed(3)} per image · ${perMillion(item.pricing?.prompt)} in per 1M` : `${perMillion(item.pricing?.prompt)} in · ${perMillion(item.pricing?.completion)} out per 1M${item.contextLength ? ` · ${ctxLabel(item.contextLength)}` : ''}`}
               selected={value === item.id}
               icon={item.supportedParameters?.includes('response_format') ? 'code-json' : undefined}
               onPress={() => {

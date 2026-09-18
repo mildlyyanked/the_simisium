@@ -3,7 +3,8 @@
  * Layers: backdrop → back hair → body → neck → head → ears → features → facial hair → front hair → glasses → accessory.
  */
 import React, { memo } from 'react';
-import { View, type StyleProp, type ViewStyle } from 'react-native';
+import { Image, View, type StyleProp, type ViewStyle } from 'react-native';
+import { usePortrait } from '@/store/portraits';
 import Svg, { Circle, Ellipse, G, Line, Path, Rect } from 'react-native-svg';
 import type { AvatarParams, Sim } from '@engine/core/types';
 import { mix, shade } from './avatarParams';
@@ -208,7 +209,20 @@ export const Avatar = memo(function Avatar({ params, size = 40, ring, ringWidth 
 });
 
 export function SimAvatar({ sim, ...rest }: Omit<AvatarProps, 'params'> & { sim: Sim | null | undefined }): React.ReactElement {
+  const uri = usePortrait(sim?.identity.appearance.portrait ? sim.id : null);
+  if (uri) return <PhotoAvatar uri={uri} dim={sim ? !sim.body.alive : false} {...rest} />;
   return <Avatar params={sim?.identity.appearance.avatar} dim={sim ? !sim.body.alive : false} {...rest} />;
+}
+
+/** A generated portrait in the same round frame as the procedural avatar. */
+export function PhotoAvatar({ uri, size = 48, ring, ringWidth = 2, dim, style, badge }: Omit<AvatarProps, 'params'> & { uri: string }): React.ReactElement {
+  const t = useTheme();
+  return (
+    <View style={[{ width: size, height: size }, style]}>
+      <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2, opacity: dim ? 0.45 : 1, borderWidth: ring ? ringWidth : 0, borderColor: ring ?? 'transparent', backgroundColor: t.colors.surfaceRaised }} accessibilityIgnoresInvertColors />
+      {badge ? <View style={{ position: 'absolute', right: 0, bottom: 0, width: Math.max(8, size * 0.24), height: Math.max(8, size * 0.24), borderRadius: 99, backgroundColor: badge, borderWidth: 2, borderColor: t.colors.background }} /> : null}
+    </View>
+  );
 }
 
 export default Avatar;

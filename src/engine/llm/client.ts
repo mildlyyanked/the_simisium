@@ -5,7 +5,7 @@
  */
 import type { LLMTask, LLMUsage } from '../core/llmTypes';
 import { estimateCost, modelFor, TASK_PARAMS, type ModelPreset } from './router';
-import { extractJson } from './schemas';
+import { extractJson, firstBalancedObject } from './schemas';
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -41,6 +41,8 @@ export interface LLMConfig {
   preset?: ModelPreset;
   /** OpenRouter routing array: models to try if the primary fails */
   fallbacks?: string[];
+  /** image-capable model for portraits (default google/gemini-2.5-flash-image) */
+  imageModel?: string;
   /** per-request timeout, default 45 000 ms */
   timeoutMs?: number;
   /** retries on 429/5xx/network, default 3 */
@@ -97,8 +99,9 @@ export interface OpenRouterModelInfo {
   id: string;
   name?: string;
   contextLength?: number;
-  pricing?: { prompt?: number; completion?: number };
+  pricing?: { prompt?: number; completion?: number; image?: number };
   supportedParameters?: string[];
+  outputModalities?: string[];
 }
 
 type ResponseFormat = { type: 'json_schema'; json_schema: { name: string; strict: boolean; schema: Record<string, unknown> } } | { type: 'json_object' } | undefined;
@@ -314,7 +317,19 @@ export class OpenRouterClient {
         try {
           data = JSON.parse(raw) as OpenRouterCompletion;
         } catch {
-          throw new LLMHttpError(status, 'OpenRouter returned invalid JSON envelope', raw);
+          // keep-alive comment lines, a stray prefix, or a truncated body: salvage the first object, else retry
+          const salvaged = salvageEnvelope(raw);
+          if (salvaged) data = salvaged;
+          else {
+            const err = new LLMHttpError(status, `OpenRouter returned invalid JSON envelope (${raw.length} chars: ${snippet(raw).slice(0, 80) || 'empty body'})`, raw);
+            if (attempt < maxRetries) {
+              lastErr = err;
+              this.config.onResponse?.({ ...info, ok: false, status, ms: nowMs() - started, error: err.message });
+              await this.backoff(base, attempt);
+              continue;
+            }
+            throw err;
+          }
         }
         if (data.error) {
           // OpenRouter sometimes reports provider errors inside a 200 envelope
@@ -367,18 +382,66 @@ export class OpenRouterClient {
     if (ms > 0) await this.sleepImpl(ms);
   }
 
+  /**
+   * Generate one image with an image-capable chat model (OpenRouter `modalities: ["image","text"]`).
+   * Returns a data URL. Not cached, not retried on content errors; network/5xx retries as usual.
+   */
+  async generateImage(prompt: string, model: string, opts: { signal?: AbortSignal; aspect?: string } = {}): Promise<{ dataUrl: string; usage: LLMUsage; servedModel: string }> {
+    if (!this.hasKey) throw new Error('OpenRouter API key not configured');
+    this.assertBudget();
+    const body = { model, messages: [{ role: 'user', content: prompt }], modalities: ['image', 'text'], usage: { include: true } };
+    const started = nowMs();
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), Math.max(this.config.timeoutMs ?? 45_000, 120_000));
+    const onOuterAbort = () => ctrl.abort();
+    opts.signal?.addEventListener('abort', onOuterAbort);
+    try {
+      const resp = await this.fetchImpl(`${this.config.baseUrl ?? DEFAULT_BASE}/chat/completions`, { method: 'POST', headers: this.headers(), body: JSON.stringify(body), signal: ctrl.signal });
+      const raw = await resp.text();
+      if (!resp.ok) throw new LLMHttpError(resp.status, `OpenRouter ${resp.status}: ${snippet(raw)}`, raw);
+      let data: OpenRouterCompletion & { choices?: { message?: { images?: { type?: string; image_url?: { url?: string } }[]; content?: unknown } }[] };
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        const salvaged = salvageEnvelope(raw);
+        if (!salvaged) throw new LLMHttpError(resp.status, 'OpenRouter returned invalid JSON envelope', raw);
+        data = salvaged;
+      }
+      if (data.error) throw new LLMHttpError(data.error.code ?? 500, `OpenRouter error: ${data.error.message ?? 'unknown'}`, raw);
+      const msg = data.choices?.[0]?.message;
+      let url = msg?.images?.find((i) => i?.image_url?.url)?.image_url?.url;
+      if (!url && Array.isArray(msg?.content)) {
+        const part = (msg!.content as { type?: string; image_url?: { url?: string } }[]).find((p) => p?.type === 'image_url' && p.image_url?.url);
+        url = part?.image_url?.url;
+      }
+      if (!url) throw new Error(`The model returned no image${typeof msg?.content === 'string' && msg.content ? ` (${snippet(msg.content).slice(0, 120)})` : ''}. Pick a model that outputs images.`);
+      const served = data.model ?? model;
+      const tokensIn = data.usage?.prompt_tokens ?? 0;
+      const tokensOut = data.usage?.completion_tokens ?? 0;
+      const cost = typeof data.usage?.cost === 'number' && Number.isFinite(data.usage.cost) ? data.usage.cost : 0.04;
+      const usage: LLMUsage = { task: 'narrate', model: served, tokensIn, tokensOut, costUsd: round6(cost), ms: nowMs() - started, cached: false };
+      this.spent = round6(this.spent + usage.costUsd);
+      this.calls += 1;
+      return { dataUrl: url, usage, servedModel: served };
+    } finally {
+      clearTimeout(timeout);
+      opts.signal?.removeEventListener('abort', onOuterAbort);
+    }
+  }
+
   /** GET /models — for validating configured model ids at settings time. */
   async listModels(): Promise<OpenRouterModelInfo[]> {
     const resp = await this.fetchImpl(`${this.config.baseUrl ?? DEFAULT_BASE}/models`, { method: 'GET', headers: this.headers() });
     const raw = await resp.text();
     if (!resp.ok) throw new LLMHttpError(resp.status, `OpenRouter ${resp.status}: ${snippet(raw)}`, raw);
-    const data = JSON.parse(raw) as { data?: { id: string; name?: string; context_length?: number; pricing?: { prompt?: string | number; completion?: string | number }; supported_parameters?: string[] }[] };
+    const data = JSON.parse(raw) as { data?: { id: string; name?: string; context_length?: number; pricing?: { prompt?: string | number; completion?: string | number; image?: string | number }; supported_parameters?: string[]; architecture?: { output_modalities?: string[] } }[] };
     return (data.data ?? []).map((m) => ({
       id: m.id,
       name: m.name,
       contextLength: m.context_length,
-      pricing: m.pricing ? { prompt: num(m.pricing.prompt), completion: num(m.pricing.completion) } : undefined,
+      pricing: m.pricing ? { prompt: num(m.pricing.prompt), completion: num(m.pricing.completion), image: num(m.pricing.image) } : undefined,
       supportedParameters: m.supported_parameters,
+      outputModalities: m.architecture?.output_modalities,
     }));
   }
 
@@ -407,6 +470,26 @@ function withJsonHint(messages: ChatMessage[]): ChatMessage[] {
 function retryable(status: number): boolean {
   return status === 429 || status === 408 || (status >= 500 && status < 600);
 }
+/** Parse an envelope that arrived with SSE-style comment lines or junk around it. */
+function salvageEnvelope(raw: string): OpenRouterCompletion | undefined {
+  const cleaned = raw
+    .split('\n')
+    .filter((l) => !l.startsWith(':') && !l.startsWith('data: [DONE]'))
+    .map((l) => (l.startsWith('data:') ? l.slice(5) : l))
+    .join('\n')
+    .trim();
+  const start = cleaned.indexOf('{');
+  if (start < 0) return undefined;
+  const obj = firstBalancedObject(cleaned.slice(start));
+  if (!obj) return undefined;
+  try {
+    const parsed = JSON.parse(obj) as OpenRouterCompletion;
+    return parsed && typeof parsed === 'object' && (parsed.choices || parsed.error) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function snippet(s: string): string {
   return s.replace(/\s+/g, ' ').slice(0, 200);
 }

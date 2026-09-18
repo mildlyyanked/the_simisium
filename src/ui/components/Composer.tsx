@@ -14,13 +14,15 @@ export interface ComposerProps {
   /** hide the mode toggle (conversation mode forces 'say') */
   lockMode?: boolean;
   suggestions?: string[];
+  /** deterministic one-tap actions, shown before the text suggestions */
+  quickActions?: { label: string; icon: string; onPress: () => void }[];
   onSubmit: (text: string, mode: ComposerMode) => void;
   disabled?: boolean;
   placeholder?: string;
   leftAccessory?: React.ReactNode;
 }
 
-export function Composer({ mode, onModeChange, lockMode, suggestions = [], onSubmit, disabled, placeholder, leftAccessory }: ComposerProps): React.ReactElement {
+export function Composer({ mode, onModeChange, lockMode, suggestions = [], quickActions = [], onSubmit, disabled, placeholder, leftAccessory }: ComposerProps): React.ReactElement {
   const t = useTheme();
   const [text, setText] = useState('');
   const canSend = text.trim().length > 0 && !disabled;
@@ -34,8 +36,11 @@ export function Composer({ mode, onModeChange, lockMode, suggestions = [], onSub
   const ph = placeholder ?? (mode === 'say' ? 'Say something…' : 'Try anything. "Ask the barista about the job posting"…');
   return (
     <View style={{ backgroundColor: t.colors.backgroundElevated, borderTopWidth: 1, borderTopColor: t.colors.border, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 8, gap: 8 }}>
-      {suggestions.length ? (
+      {suggestions.length || quickActions.length ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" contentContainerStyle={{ gap: 6, paddingRight: 12 }}>
+          {quickActions.map((q, i) => (
+            <Chip key={`q${i}_${q.label}`} label={q.label} size="sm" icon={q.icon} selected onPress={q.onPress} disabled={disabled} />
+          ))}
           {suggestions.map((s, i) => (
             <Chip key={`${i}_${s}`} label={s} size="sm" icon={mode === 'say' ? 'message-reply-text' : 'creation'} onPress={() => send(s)} disabled={disabled} />
           ))}

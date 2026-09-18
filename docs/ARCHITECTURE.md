@@ -208,6 +208,12 @@ interface PlacesProvider {
 
 `gen/worldgen.ts` seeds a new game: pick region → fetch venues per archetype (nearest N) → create home lot → generate a population of NPCs attached to venues (staff), the neighborhood (neighbors), and institutions (teachers, doctors, police) → generate bios lazily on first meaningful contact.
 
+## 8b. Deterministic intents (`src/engine/core/intents.ts`)
+
+Freeform text goes through `resolveIntent` before any model call. Routines ("take a shower", "make breakfast", "go to bed"), commuting ("go to work", "drive home", "walk to the gym"), and waiting map onto the simulation's own actions by verb aliases, the need an action satisfies, and label overlap, so they behave identically every time and cost nothing. Only speech (greetings, questions, anything aimed at a present person) and genuinely open-ended attempts reach the LLM adjudicator. `quickActions` derives contextual one-tap chips (go to work before a shift, eat when hungry, sleep late at night, go home) from the same action list.
+
+Portraits: `LLMService.generatePortrait` asks an image-capable model (Settings → Portraits) for a photo built from the identity fields; the data URL is stored per sim outside the save (`src/store/portraits.ts`) and `SimAvatar` shows it wherever the procedural avatar would appear.
+
 ## 9b. Space layer (`src/engine/space`)
 
 Every venue has a **floor plan** (`VenueLayout`), generated on first use from its rooms and objects and stored in `state.layouts` so it never changes under the player. Generation is seeded by venue id (`layout:<venueId>:<version>`): rooms are packed into rows of a tile grid with shared walls and equal row heights, doors are cut between every pair of neighbours (the plan is always fully connected), and each object gets one tile in its room, along the walls first, never in front of a door and never boxing in a corner. Objects that arrive later (a purchase) are slotted in by `placeNewObjects`.
