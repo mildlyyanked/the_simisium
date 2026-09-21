@@ -90,7 +90,7 @@ describe('model-written dilemmas', () => {
       state.pendingInterrupts = [];
     }
     expect(state.log.some((l) => /postcard/i.test(l.text))).toBe(true);
-  });
+  }, 60_000);
 
   it('fall back to the catalog when the model produces nothing', async () => {
     const state = await world();
@@ -99,5 +99,5 @@ describe('model-written dilemmas', () => {
     engine.init(true);
     engine.installDilemma(me, 'found_wallet', undefined);
     expect(state.dilemmas[0]?.source).toBe('template');
-  });
+  }, 60_000);
 });

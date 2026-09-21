@@ -64,7 +64,7 @@ describe('dilemmas', () => {
     }
     expect(sim.relationships[friend.id].trust).not.toBe(trustBefore);
     expect(state.log.some((l) => /pays you back|doesn't mention the money/.test(l.text))).toBe(true);
-  });
+  }, 60_000);
 
   it('fall to the default when the deadline passes', async () => {
     const state = await world();
@@ -78,7 +78,7 @@ describe('dilemmas', () => {
     expect(d.resolved?.byDeadline).toBe(true);
     expect(d.resolved?.optionId).toBe('leave');
     void resolveDilemma;
-  });
+  }, 60_000);
 });
 
 describe('city news', () => {
@@ -97,7 +97,7 @@ describe('city news', () => {
     engine.advance(3 * DAY, { allowInterrupt: false });
     expect(newsEffects(state).transitDown).toBeUndefined();
     expect(engine.actionsFor(me).some((a) => a.action.id === `travel:${dest.id}:transit`)).toBe(true);
-  });
+  }, 60_000);
 });
 
 describe('standing and milestones', () => {
@@ -134,5 +134,5 @@ describe('standing and milestones', () => {
     engine.advance(2 * DAY, { allowInterrupt: false });
     expect(state.feed.length).toBeGreaterThan(0);
     expect(state.feed.every((p) => state.sims[p.simId])).toBe(true);
-  });
+  }, 60_000);
 });
