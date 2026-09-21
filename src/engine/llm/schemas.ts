@@ -270,6 +270,34 @@ export function firstBalancedObject(text: string): string | undefined {
   return undefined;
 }
 
+/** Close a JSON document cut off mid-way (max_tokens): finish the open string, then the open containers. */
+export function closeTruncatedJson(text: string): string {
+  const start = text.indexOf('{');
+  if (start < 0) return text;
+  let t = text.slice(start).replace(/\s+$/, '');
+  const stack: string[] = [];
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === '{') stack.push('}');
+    else if (ch === '[') stack.push(']');
+    else if (ch === '}' || ch === ']') stack.pop();
+  }
+  if (inStr) t += '"';
+  // drop a dangling key or separator ("...,  "key":  <EOF>)
+  t = t.replace(/,\s*$/, '').replace(/:\s*$/, ': null').replace(/,\s*"[^"]*"\s*$/, '');
+  while (stack.length) t += stack.pop();
+  return t;
+}
+
 /** Common LLM JSON damage: trailing commas, smart quotes, comments, raw newlines in strings. */
 export function repairJson(text: string): string {
   let t = text;
@@ -308,6 +336,13 @@ export function extractJson(text: string): unknown {
     } catch {
       /* next candidate */
     }
+  }
+  // last resort: the reply was cut off mid-object
+  try {
+    const v = JSON.parse(repairJson(closeTruncatedJson(stripped)));
+    if (v && typeof v === 'object') return v;
+  } catch {
+    /* give up */
   }
   return undefined;
 }

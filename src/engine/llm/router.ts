@@ -41,8 +41,8 @@ export const MODEL_PRESETS: Record<ModelPreset, Record<LLMTask, string>> = {
 
 /** Sampling parameters per task. */
 export const TASK_PARAMS: Record<LLMTask, { temperature: number; maxTokens: number }> = {
-  dialogue: { temperature: 0.9, maxTokens: 700 },
-  adjudicate: { temperature: 0.4, maxTokens: 1200 },
+  dialogue: { temperature: 0.9, maxTokens: 1400 },
+  adjudicate: { temperature: 0.4, maxTokens: 1800 },
   bio: { temperature: 0.8, maxTokens: 2000 },
   narrate: { temperature: 0.8, maxTokens: 300 },
   summarize: { temperature: 0.2, maxTokens: 400 },

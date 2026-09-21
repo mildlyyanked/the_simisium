@@ -44,6 +44,7 @@ export interface GameState {
   lastSaveId: string | null;
   busy: boolean;
   busyLabel: string;
+  busySince: number;
   narrating: boolean;
   activeSimId: SimId | null;
   openConversationId: string | null;
@@ -65,14 +66,17 @@ export interface GameState {
   rebuildEngine(): void;
 
   getActions(): ActionAvailability[];
-  perform(actionId: string, params?: Record<string, unknown>): PerformOutcome | null;
+  perform(actionId: string, params?: Record<string, unknown>, opts?: { force?: boolean }): PerformOutcome | null;
   freeform(text: string): Promise<void>;
   say(conversationId: string, text: string): Promise<void>;
   wait(minutes: number): void;
   waitUntilMorning(): void;
   skipToNextEvent(): void;
   startConversation(targetId: SimId, channel?: Conversation['channel']): string | null;
-  endConversation(): void;
+  endConversation(opts?: { wrapUp?: boolean; reason?: string }): Promise<void>;
+  /** an action that would end the open conversation is waiting for the player's OK */
+  pendingConfirm: { title: string; body: string; confirmLabel: string; run: () => void } | null;
+  cancelConfirm(): void;
   resolveInterrupt(id: string, optionActionId?: string, params?: Record<string, unknown>): void;
   switchSim(id: SimId): void;
   /** walk the active sim to a tile of the current floor plan */
@@ -96,6 +100,36 @@ function attachEngine(engine: Engine, set: (p: Partial<GameState>) => void, get:
     set({ version: s.version + 1, activeSimId: engine.state.player.activeSimId });
     scheduleSave(get);
   });
+}
+
+/** Actions that belong to the conversation itself (talking to the partner) do not end it. */
+function actionFitsConversation(action: { id: string; category?: string; target?: { kind: string; id: string } }, conv: Conversation): boolean {
+  if (action.target?.kind === 'sim' && conv.participantIds.includes(action.target.id as SimId)) return true;
+  if (action.id.startsWith('say') || action.id.startsWith('social:') || action.id.startsWith('romance:')) return true;
+  if (conv.channel === 'text') return action.id.startsWith('phone:');
+  return false;
+}
+
+const BUSY_LIMIT_MS = 90_000;
+let busyTimer: ReturnType<typeof setTimeout> | null = null;
+/** A model call that never resolves (app backgrounded mid-request, dead socket) must not freeze the game. */
+function armBusyWatchdog(set: (p: Partial<GameState>) => void, get: () => GameState): void {
+  if (busyTimer) clearTimeout(busyTimer);
+  busyTimer = setTimeout(() => {
+    busyTimer = null;
+    if (get().busy) {
+      set({ busy: false, busyLabel: '' });
+      get().pushToast('That took too long. The world moved on; try again.', 'warning');
+    }
+  }, BUSY_LIMIT_MS);
+}
+/** Called when the app returns to the foreground: clear a stale busy flag. */
+export function recoverFromBackground(): void {
+  const s = useGame.getState();
+  if (s.busy && Date.now() - s.busySince > 20_000) {
+    useGame.setState({ busy: false, busyLabel: '' });
+    s.pushToast('Reconnected. Your last request may not have gone through.', 'info');
+  }
 }
 
 function scheduleSave(get: () => GameState): void {
@@ -128,6 +162,8 @@ export const useGame = create<GameState>((set, get) => ({
   lastSaveId: null,
   busy: false,
   busyLabel: '',
+  busySince: 0,
+  pendingConfirm: null,
   narrating: false,
   activeSimId: null,
   openConversationId: null,
@@ -292,11 +328,31 @@ export const useGame = create<GameState>((set, get) => ({
     }
   },
 
-  perform(actionId, params = {}) {
+  perform(actionId, params = {}, opts = {}) {
     const { engine } = get();
     if (!engine) return null;
     const simId = engine.state.player.activeSimId;
     const action = engine.findAction(simId, actionId);
+    // doing something else while talking to someone ends the conversation, and that deserves a heads-up
+    const open = get().openConversationId ? engine.state.conversations[get().openConversationId as Conversation['id']] : undefined;
+    if (!opts.force && open?.active && action && !actionFitsConversation(action, open)) {
+      const partner = open.participantIds.filter((p) => p !== simId).map((p) => engine.state.sims[p]?.identity.firstName ?? 'them').join(' and ');
+      set({
+        pendingConfirm: {
+          title: `End your conversation with ${partner}?`,
+          body: `“${action.label}” means wrapping things up with ${partner} first. They'll remember how it ended.`,
+          confirmLabel: 'Wrap up and go',
+          run: () => {
+            void get()
+              .endConversation({ wrapUp: true, reason: action.label })
+              .then(() => {
+                get().perform(actionId, params, { force: true });
+              });
+          },
+        },
+      });
+      return null;
+    }
     let res: PerformOutcome;
     try {
       res = engine.perform(simId, actionId, params);
@@ -352,7 +408,8 @@ export const useGame = create<GameState>((set, get) => ({
     const t = text.trim();
     if (!t) return;
     const simId = engine.state.player.activeSimId;
-    set({ busy: true, busyLabel: 'The world is thinking…' });
+    set({ busy: true, busyLabel: 'The world is thinking…', busySince: Date.now() });
+    armBusyWatchdog(set, get);
     haptic.light();
     try {
       const res = await engine.freeform(simId, t);
@@ -383,7 +440,8 @@ export const useGame = create<GameState>((set, get) => ({
     const conv = engine.state.conversations[conversationId as Conversation['id']];
     const other = conv?.participantIds.find((p) => p !== simId);
     const name = other ? engine.state.sims[other]?.identity.firstName ?? 'They' : 'They';
-    set({ busy: true, busyLabel: `${name} is thinking…` });
+    set({ busy: true, busyLabel: `${name} is thinking…`, busySince: Date.now() });
+    armBusyWatchdog(set, get);
     haptic.light();
     try {
       const res = await engine.say(simId, conversationId, t);
@@ -454,10 +512,28 @@ export const useGame = create<GameState>((set, get) => ({
     }
   },
 
-  endConversation() {
+  async endConversation(opts = {}) {
     const { engine, openConversationId } = get();
-    if (engine && openConversationId) engine.endConversation(openConversationId);
-    set({ openConversationId: null, followUps: [] });
+    if (!engine || !openConversationId) return;
+    const conv = engine.state.conversations[openConversationId as Conversation['id']];
+    if (conv?.active && opts.wrapUp) {
+      set({ busy: true, busyLabel: 'Wrapping up…', busySince: Date.now() });
+      armBusyWatchdog(set, get);
+      try {
+        await engine.wrapUpConversation(engine.state.player.activeSimId, openConversationId, opts.reason ?? 'move on');
+      } catch (err) {
+        engine.endConversation(openConversationId);
+        get().pushToast(`The goodbye got lost: ${(err as Error).message}`, 'info');
+      } finally {
+        set({ busy: false, busyLabel: '' });
+      }
+    } else if (conv?.active) engine.endConversation(openConversationId);
+    set({ openConversationId: null, followUps: [], version: get().version + 1 });
+    scheduleSave(get);
+  },
+
+  cancelConfirm() {
+    set({ pendingConfirm: null });
   },
 
   resolveInterrupt(id, optionActionId, params) {

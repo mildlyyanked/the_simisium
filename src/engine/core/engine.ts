@@ -240,6 +240,9 @@ export class Engine {
       }
     }
 
+    // conversations end when someone walks out
+    this.pruneConversations(minute);
+
     // systems
     for (const sys of this.systems) {
       if (!sys.onTick) continue;
@@ -495,6 +498,60 @@ export class Engine {
     }
     this.notify();
     return conv;
+  }
+
+  /** The active in-person conversation a sim is part of, if any. */
+  activeConversationOf(simId: SimId): Conversation | undefined {
+    return Object.values(this.state.conversations).find((c) => c.active && c.participantIds.includes(simId));
+  }
+
+  /** In-person conversations cannot outlive co-presence: when a participant leaves the venue, it ends. */
+  private pruneConversations(minute: number): void {
+    for (const c of Object.values(this.state.conversations)) {
+      if (!c.active || c.channel !== 'in_person') continue;
+      const sims = c.participantIds.map((id) => this.state.sims[id]).filter(Boolean);
+      const gone = sims.find((s) => s.travel || s.location.venueId !== c.venueId || !s.body.alive);
+      if (!gone) continue;
+      const controlled = sims.filter((s) => this.state.player.controlledSimIds.includes(s.id));
+      const others = sims.filter((s) => s.id !== gone.id);
+      const youLeft = this.state.player.controlledSimIds.includes(gone.id);
+      const text = youLeft
+        ? `You leave ${others.map((o) => o.identity.firstName).join(' and ')} behind mid-conversation.`
+        : `${gone.identity.firstName} ${gone.currentAction?.label ? `has to go (${gone.currentAction.label.toLowerCase()})` : 'has to go'}. The conversation ends.`;
+      if (controlled.length) this.log({ text, kind: 'narrative', simId: controlled[0].id, venueId: c.venueId, importance: 1, meta: { source: 'conversation:left' } });
+      c.active = false;
+      c.lastTurnAt = minute;
+      this.bus.emit({ type: 'conversation:ended', conversationId: c.id });
+    }
+  }
+
+  /**
+   * End a conversation on purpose because the player is about to do something else: the
+   * partner gets a parting line (live model) or a plain wrap-up (offline), then it closes.
+   */
+  async wrapUpConversation(simId: SimId, conversationId: string, reason: string): Promise<void> {
+    const conv = this.state.conversations[conversationId as import('./types').ConversationId];
+    if (!conv || !conv.active) return;
+    const others = conv.participantIds.filter((p) => p !== simId).map((p) => this.state.sims[p]).filter(Boolean);
+    const names = others.map((o) => o.identity.firstName).join(' and ');
+    if (this.llm && this.llm.isLive() && others.length) {
+      try {
+        const scene = this.scene(simId, conversationId);
+        const text = `(wrapping up: ${reason.replace(/\s*\(.*\)$/, '').toLowerCase()}) I should get going.`;
+        conv.turns.push({ speakerId: simId, text, at: this.now });
+        this.log({ text: `You wrap things up with ${names}: ${reason.replace(/\s*\(.*\)$/, '').toLowerCase()}.`, kind: 'narrative', simId, venueId: conv.venueId, importance: 1 });
+        const outcome = await this.llm.converse(scene, others[0].id, text, { channel: conv.channel });
+        outcome.endsConversation = true;
+        this.applyOutcome(simId, outcome, conv, 'conversation');
+      } catch {
+        /* fall through to the plain wrap-up */
+      }
+    }
+    if (conv.active) {
+      this.log({ text: `You wrap things up with ${names} and ${reason ? reason.replace(/\s*\(.*\)$/, '').toLowerCase() : 'move on'}.`, kind: 'narrative', simId, venueId: conv.venueId, importance: 1 });
+      for (const o of others) this.applyEffects(simId, { relationships: [{ simId: o.id, familiarity: 1, mutual: true }] }, 'conversation:wrapup');
+      this.endConversation(conversationId);
+    }
   }
 
   endConversation(conversationId: string): void {

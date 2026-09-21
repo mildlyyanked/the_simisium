@@ -208,6 +208,12 @@ interface PlacesProvider {
 
 `gen/worldgen.ts` seeds a new game: pick region → fetch venues per archetype (nearest N) → create home lot → generate a population of NPCs attached to venues (staff), the neighborhood (neighbors), and institutions (teachers, doctors, police) → generate bios lazily on first meaningful contact.
 
+## 8a. Conversation lifecycle
+
+An in-person conversation needs co-presence: every tick `pruneConversations` ends any whose participant left the venue (with a log line saying who left). NPC autonomy holds a sim who is mid-conversation with the player in place unless an obligation starts within 15 minutes, or the player has gone quiet for 45. Performing a non-conversational action while talking (an object, travel, the phone) goes through the store's `pendingConfirm` dialog; on confirm `engine.wrapUpConversation` gets the partner's parting line from the model (or a plain wrap-up offline), applies its effects, and only then runs the action. Text and phone conversations are unaffected by location.
+
+The store's busy flag has a 90-second watchdog and is cleared when the app returns to the foreground after a stale request, so a dead socket never freezes the game.
+
 ## 8b. Deterministic intents (`src/engine/core/intents.ts`)
 
 Freeform text goes through `resolveIntent` before any model call. Routines ("take a shower", "make breakfast", "go to bed"), commuting ("go to work", "drive home", "walk to the gym"), and waiting map onto the simulation's own actions by verb aliases, the need an action satisfies, and label overlap, so they behave identically every time and cost nothing. Only speech (greetings, questions, anything aimed at a present person) and genuinely open-ended attempts reach the LLM adjudicator. `quickActions` derives contextual one-tap chips (go to work before a shift, eat when hungry, sleep late at night, go home) from the same action list.

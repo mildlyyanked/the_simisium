@@ -164,7 +164,7 @@ export default function LiveScreen(): React.ReactElement {
             </Text>
             <RelationshipMeter rel={sim.relationships[partner.id]} compact showFlags={false} />
           </View>
-          <Button title="End" size="sm" variant="ghost" icon="close" onPress={endConversation} />
+          <Button title="End" size="sm" variant="ghost" icon="close" onPress={() => void endConversation({ wrapUp: true, reason: 'say goodbye' })} />
         </View>
       ) : null}
 

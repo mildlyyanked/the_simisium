@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, Platform } from 'react-native';
+import { AppState, View, Platform } from 'react-native';
 import { Stack, SplashScreen } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { useSettings } from '@/store/settings';
-import { useGame } from '@/store/gameStore';
+import { useGame, recoverFromBackground } from '@/store/gameStore';
 import { ToastHost } from '@/ui/components/Toast';
 import { theme } from '@/ui/theme';
 
@@ -31,6 +31,13 @@ export default function RootLayout(): React.ReactElement {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st === 'active') recoverFromBackground();
+    });
+    return () => sub.remove();
   }, []);
 
   useEffect(() => {

@@ -4,7 +4,7 @@ import { Tabs, Redirect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGame } from '@/store/gameStore';
 import { useActiveSim, useEngine } from '@/store/selectors';
-import { Text, Icon } from '@/ui/components';
+import { Text, Icon, Dialog, Button } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
 import { clockShort } from '@/ui/format';
 
@@ -76,12 +76,38 @@ function TabBar({ state, navigation }: TabBarProps): React.ReactElement {
   );
 }
 
+function ConfirmHost(): React.ReactElement | null {
+  const pending = useGame((s) => s.pendingConfirm);
+  const cancel = useGame((s) => s.cancelConfirm);
+  if (!pending) return null;
+  return (
+    <Dialog visible onClose={cancel} title={pending.title}>
+      <Text muted style={{ marginBottom: 14 }}>
+        {pending.body}
+      </Text>
+      <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'flex-end' }}>
+        <Button title="Keep talking" variant="ghost" onPress={cancel} />
+        <Button
+          title={pending.confirmLabel}
+          onPress={() => {
+            const run = pending.run;
+            cancel();
+            run();
+          }}
+        />
+      </View>
+    </Dialog>
+  );
+}
+
 export default function GameLayout(): React.ReactElement {
   const hydrated = useGame((s) => s.hydrated);
   const engine = useGame((s) => s.engine);
   const t = useTheme();
   if (hydrated && !engine) return <Redirect href="/" />;
   return (
+    <>
+    <ConfirmHost />
     <Tabs tabBar={(props) => <TabBar state={props.state} navigation={props.navigation as unknown as TabBarProps['navigation']} />} screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: t.colors.background }, lazy: true }}>
       <Tabs.Screen name="live" options={{ title: 'Live' }} />
       <Tabs.Screen name="here" options={{ title: 'Here' }} />
@@ -90,5 +116,6 @@ export default function GameLayout(): React.ReactElement {
       <Tabs.Screen name="sims" options={{ title: 'Sims' }} />
       <Tabs.Screen name="journal" options={{ title: 'Journal' }} />
     </Tabs>
+    </>
   );
 }

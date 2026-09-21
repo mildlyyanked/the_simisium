@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { ScrollView, TextInput, View, useWindowDimensions } from 'react-native';
+import { Image, ScrollView, TextInput, View, useWindowDimensions } from 'react-native';
 import Svg, { Circle, G, Line, Text as SvgText } from 'react-native-svg';
 import { useGame } from '@/store/gameStore';
+import { useSettings } from '@/store/settings';
 import { useActions, useActiveSim, useEngine, useVenueOf } from '@/store/selectors';
 import type { Venue, VenueId } from '@engine/core/types';
 import { haversineKm } from '@engine/core/util';
@@ -12,48 +13,94 @@ import { duration, hoursByDay, km, openStatus, priceLevel } from '@/ui/format';
 
 type Filter = 'all' | 'open' | 'nearby' | 'favorites';
 
-function Radar({ venues, center, hereId, onPick, selectedId }: { venues: Venue[]; center: Venue; hereId: VenueId; onPick: (id: VenueId) => void; selectedId: VenueId | null }): React.ReactElement {
+/** Web Mercator pixel coordinates at a zoom level (256px world tiles). */
+function mercator(lat: number, lng: number, zoom: number): { x: number; y: number } {
+  const scale = 256 * 2 ** zoom;
+  const x = ((lng + 180) / 360) * scale;
+  const s = Math.sin((lat * Math.PI) / 180);
+  const y = (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * scale;
+  return { x, y };
+}
+
+const STATIC_STYLE = [
+  'element:geometry|color:0x141a27',
+  'element:labels.text.fill|color:0x8b97aa',
+  'element:labels.text.stroke|color:0x0b0e14',
+  'feature:road|element:geometry|color:0x2a3346',
+  'feature:road.arterial|element:geometry|color:0x334159',
+  'feature:road.highway|element:geometry|color:0x3d4d6b',
+  'feature:water|element:geometry|color:0x0f1a2b',
+  'feature:landscape.natural|element:geometry|color:0x172230',
+  'feature:poi|visibility:off',
+  'feature:transit|visibility:off',
+]
+  .map((x) => `style=${encodeURIComponent(x)}`)
+  .join('&');
+
+/**
+ * The neighbourhood: real streets from Google's Static Maps API underneath when a key is set
+ * (one cached image per view), otherwise a bearing/distance radar. Markers are projected the
+ * same way in both cases so the amber dot is always you.
+ */
+function Radar({ venues, center, hereId, onPick, selectedId, mapKey }: { venues: Venue[]; center: Venue; hereId: VenueId; onPick: (id: VenueId) => void; selectedId: VenueId | null; mapKey?: string }): React.ReactElement {
   const t = useTheme();
   const { width } = useWindowDimensions();
+  const [imgFailed, setImgFailed] = useState(false);
   const size = Math.min(width - 32, 360);
   const r = size / 2;
   const maxKm = Math.max(1.5, ...venues.map((v) => haversineKm(center.location, v.location)));
+  const useMap = !!mapKey && !imgFailed;
+  // zoom so the farthest place still fits inside the circle
+  const metersPerPxWanted = (maxKm * 1000) / (r - 14);
+  const zoom = Math.max(10, Math.min(17, Math.floor(Math.log2((156543.03392 * Math.cos((center.location.lat * Math.PI) / 180)) / metersPerPxWanted))));
+  const c = mercator(center.location.lat, center.location.lng, zoom);
   const pts = venues.map((v) => {
+    const d = haversineKm(center.location, v.location);
+    if (useMap) {
+      const p = mercator(v.location.lat, v.location.lng, zoom);
+      return { v, x: r + (p.x - c.x), y: r + (p.y - c.y), d };
+    }
     const dLat = v.location.lat - center.location.lat;
     const dLng = (v.location.lng - center.location.lng) * Math.cos((center.location.lat * Math.PI) / 180);
-    const d = haversineKm(center.location, v.location);
     const ang = Math.atan2(dLng, dLat);
     const rr = Math.sqrt(Math.min(1, d / maxKm)) * (r - 14);
     return { v, x: r + Math.sin(ang) * rr, y: r - Math.cos(ang) * rr, d };
   });
+  const imgSize = Math.min(640, Math.round(size));
+  const url = useMap ? `https://maps.googleapis.com/maps/api/staticmap?center=${center.location.lat},${center.location.lng}&zoom=${zoom}&size=${imgSize}x${imgSize}&scale=2&maptype=roadmap&${STATIC_STYLE}&key=${mapKey}` : undefined;
   return (
     <View style={{ alignItems: 'center', marginVertical: 6 }}>
-      <Svg width={size} height={size}>
-        {[0.33, 0.66, 1].map((k) => (
-          <Circle key={k} cx={r} cy={r} r={(r - 14) * k} stroke={t.colors.border} strokeWidth={1} fill="none" />
-        ))}
-        <Line x1={r} y1={14} x2={r} y2={size - 14} stroke={t.colors.border} strokeWidth={1} />
-        <Line x1={14} y1={r} x2={size - 14} y2={r} stroke={t.colors.border} strokeWidth={1} />
-        <SvgText x={r} y={11} fill={t.colors.textFaint} fontSize={9} textAnchor="middle">
-          N
-        </SvgText>
-        {pts.map(({ v, x, y }) => {
-          const sel = v.id === selectedId;
-          const here = v.id === hereId;
-          return (
-            <G key={v.id} onPress={() => onPick(v.id)}>
-              <Circle cx={x} cy={y} r={sel ? 9 : here ? 8 : 5.5} fill={here ? t.colors.accent : sel ? t.colors.text : v.discovered ? t.colors.textMuted : t.colors.surfaceOverlay} opacity={v.discovered ? 1 : 0.6} />
-              {sel || here ? (
-                <SvgText x={x} y={y - 12} fill={t.colors.text} fontSize={10} textAnchor="middle">
-                  {v.name.length > 22 ? `${v.name.slice(0, 21)}…` : v.name}
-                </SvgText>
-              ) : null}
-            </G>
-          );
-        })}
-      </Svg>
-      <Text variant="caption" faint>
-        Outer ring ≈ {km(maxKm)} · you are the amber dot
+      <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden', backgroundColor: t.colors.background }}>
+        {url ? <Image source={{ uri: url }} style={{ position: 'absolute', width: size, height: size, opacity: 0.9 }} onError={() => setImgFailed(true)} accessibilityIgnoresInvertColors /> : null}
+        <Svg width={size} height={size}>
+          {!useMap
+            ? [0.33, 0.66, 1].map((k) => <Circle key={k} cx={r} cy={r} r={(r - 14) * k} stroke={t.colors.border} strokeWidth={1} fill="none" />)
+            : <Circle cx={r} cy={r} r={r - 1} stroke={t.colors.border} strokeWidth={1.5} fill="none" />}
+          {!useMap ? <Line x1={r} y1={14} x2={r} y2={size - 14} stroke={t.colors.border} strokeWidth={1} /> : null}
+          {!useMap ? <Line x1={14} y1={r} x2={size - 14} y2={r} stroke={t.colors.border} strokeWidth={1} /> : null}
+          <SvgText x={r} y={11} fill={t.colors.textFaint} fontSize={9} textAnchor="middle">
+            N
+          </SvgText>
+          {pts.map(({ v, x, y }) => {
+            if (x < 6 || y < 6 || x > size - 6 || y > size - 6) return null;
+            const sel = v.id === selectedId;
+            const here = v.id === hereId;
+            return (
+              <G key={v.id} onPress={() => onPick(v.id)}>
+                {useMap ? <Circle cx={x} cy={y} r={sel ? 12 : here ? 11 : 8.5} fill={t.colors.background} opacity={0.75} /> : null}
+                <Circle cx={x} cy={y} r={sel ? 9 : here ? 8 : 5.5} fill={here ? t.colors.accent : sel ? t.colors.text : v.discovered ? t.colors.textMuted : t.colors.surfaceOverlay} opacity={v.discovered || here || sel ? 1 : 0.6} />
+                {sel || here ? (
+                  <SvgText x={x} y={y - 12} fill={t.colors.text} fontSize={10} textAnchor="middle">
+                    {v.name.length > 22 ? `${v.name.slice(0, 21)}…` : v.name}
+                  </SvgText>
+                ) : null}
+              </G>
+            );
+          })}
+        </Svg>
+      </View>
+      <Text variant="caption" faint style={{ marginTop: 4 }}>
+        {useMap ? `Map data ©Google · circle ≈ ${km(maxKm)} across from you` : `Outer ring ≈ ${km(maxKm)} · you are the amber dot`}
       </Text>
     </View>
   );
@@ -67,6 +114,7 @@ export default function MapScreen(): React.ReactElement {
   const actions = useActions();
   const perform = useGame((s) => s.perform);
   const toggleFavorite = useGame((s) => s.toggleFavorite);
+  const mapKey = useSettings((st) => st.googlePlacesKey);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [group, setGroup] = useState<ArchetypeGroup | 'All'>('All');
@@ -132,7 +180,7 @@ export default function MapScreen(): React.ReactElement {
         </ScrollView>
       </View>
       <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 40 }}>
-        {showRadar && venues.length ? <Radar venues={venues.slice(0, 60)} center={here} hereId={here.id} selectedId={selected} onPick={setSelected} /> : null}
+        {showRadar && venues.length ? <Radar venues={venues.slice(0, 60)} center={here} hereId={here.id} selectedId={selected} onPick={setSelected} mapKey={mapKey || undefined} /> : null}
         {venues.length === 0 ? <EmptyState icon="map-search-outline" title="Nothing here yet" body="Places appear on the map as you discover them. Type two letters to search everything in town." compact /> : null}
         {venues.slice(0, 80).map((v) => (
           <VenueCard key={v.id} venue={v} epoch={engine.state.epoch} minute={engine.state.time.minute} isOpen={engine.ctx().query.isVenueOpen(v.id)} distanceKm={v.d} favorite={engine.state.player.favorites.includes(v.id)} here={v.id === here.id} onPress={() => setSelected(v.id)} onFavorite={() => toggleFavorite(v.id)} style={{ marginBottom: 8 }} compact knownCount={Object.keys(sim.relationships).filter((id) => v.staffSimIds.includes(id as never) || v.regularSimIds.includes(id as never)).length} />

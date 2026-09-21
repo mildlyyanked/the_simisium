@@ -248,7 +248,7 @@ export class OpenRouterClient {
           const json = extractJson(res.text);
           if (json === undefined) {
             // structured output requested but nothing parseable came back: try the next format, once
-            lastErr = new Error(`Model returned non-JSON for ${task}`);
+            lastErr = new Error(`Model returned non-JSON for ${task} (${res.finishReason ?? 'no finish reason'}, ${res.text.length} chars${res.text ? `: "${snippet(res.text).slice(0, 100)}"` : ''})`);
             if (fi < formats.length - 1) continue;
             throw lastErr;
           }

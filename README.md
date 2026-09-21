@@ -48,7 +48,7 @@ npx expo export --platform web --output-dir dist && npm run shots   # web build 
 Open **Settings** in the app to enter:
 
 - an **OpenRouter API key** (`sk-or-…`) — without it the game uses the offline fallback dialogue/adjudication, which is playable but flat;
-- a **Google Maps Platform API key** with Places API (New), Geocoding API and Routes API enabled — without it the game uses the bundled Austin fixtures for any city you pick (the names are re-skinned to the chosen city).
+- a **Google Maps Platform API key** with Places API (New), Geocoding API, Routes API and Maps Static API enabled (Static Maps draws real streets under the Map tab; without it the tab shows a distance radar) — without it the game uses the bundled Austin fixtures for any city you pick (the names are re-skinned to the chosen city).
 
 Keys are stored with `expo-secure-store` on device (AsyncStorage on web) and are only ever sent to OpenRouter / Google.
 

@@ -147,6 +147,17 @@ function activeBlock(ctx: SystemContext, sim: Sim, minute: number): RoutineBlock
 }
 
 /** Minutes until the next work/school/childcare block begins (today or tomorrow), or Infinity. */
+function inConversationWithPlayer(ctx: SystemContext, sim: Sim, now: number): boolean {
+  const controlled = ctx.state.player.controlledSimIds;
+  for (const c of Object.values(ctx.state.conversations)) {
+    if (!c.active || c.channel !== 'in_person' || !c.participantIds.includes(sim.id)) continue;
+    if (!c.participantIds.some((p) => controlled.includes(p))) continue;
+    if (now - c.lastTurnAt > 45) continue; // the player wandered off mentally; life goes on
+    return true;
+  }
+  return false;
+}
+
 export function minutesToNextObligation(ctx: SystemContext, sim: Sim, minute: number): number {
   const mod = ((minute % DAY) + DAY) % DAY;
   let best = Number.POSITIVE_INFINITY;
@@ -418,6 +429,8 @@ function tickFull(ctx: SystemContext, sim: Sim, present: Sim[]): void {
   CURRENT_STATE = ctx.state;
   if (sim.travel) return;
   if (sim.legal.incarceratedUntil && sim.legal.incarceratedUntil > now) return;
+  // mid-conversation with the player: stay put unless an obligation is about to start
+  if (inConversationWithPlayer(ctx, sim, now) && minutesToNextObligation(ctx, sim, now) > 15) return;
   const target = whereIs(ctx, sim, now);
   const block = activeBlock(ctx, sim, now);
   const busy = !!sim.currentAction && sim.currentAction.endsAt > now;
