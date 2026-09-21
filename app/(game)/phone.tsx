@@ -71,6 +71,7 @@ export default function PhoneScreen(): React.ReactElement {
   const now = engine.state.time.minute;
   const epoch = engine.state.epoch;
   const notifications = sim.phone.notifications.filter((n) => !n.read).slice(-4).map((n) => ({ id: n.id, app: n.app, title: n.title, body: n.body }));
+  const feed = (engine.state.feed ?? []).filter((p) => p.at <= now).slice(-30).reverse();
   const threads = Object.entries(sim.phone.threads)
     .map(([id, msgs]) => ({ id: id as SimId, other: engine.state.sims[id as SimId], last: msgs[msgs.length - 1], unread: msgs.filter((m) => !m.read && m.to === sim.id).length }))
     .filter((th) => th.other && th.last)
@@ -289,6 +290,35 @@ export default function PhoneScreen(): React.ReactElement {
           <ScrollView contentContainerStyle={{ padding: 12, gap: 12 }}>
             <Card title={sm ? sm.platform : 'Not on social media'} subtitle={sm ? `${sm.followers.toLocaleString()} followers · ${sm.posts} posts` : 'Post something to start an account.'} icon="heart-multiple" />
             <ActionList items={[...(byPrefix.get('social') ?? []), ...(byPrefix.get('dating') ?? [])]} onPerform={(id) => perform(id)} empty="Nothing to post" />
+            {feed.length ? (
+              <Card title="Feed" subtitle="What the people you know are up to" icon="account-group-outline">
+                {feed.map((p, i) => {
+                  const who = engine.state.sims[p.simId];
+                  const isMe = p.simId === sim.id;
+                  return (
+                    <Pressable key={p.id} onPress={() => (isMe ? undefined : router.push({ pathname: '/(game)/sims', params: { sim: p.simId } }))} style={{ flexDirection: 'row', gap: 10, paddingVertical: 8, borderTopWidth: i ? 1 : 0, borderTopColor: t.colors.border, marginLeft: p.replyTo ? 26 : 0 }}>
+                      <SimAvatar sim={who} size={p.replyTo ? 24 : 34} />
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                          <Text variant="bodyStrong" numberOfLines={1} style={{ flexShrink: 1 }}>
+                            {isMe ? 'You' : who?.identity.firstName ?? 'Someone'}
+                          </Text>
+                          <Text variant="caption" faint>
+                            {clockShort(p.at)}
+                          </Text>
+                        </View>
+                        <Text variant="body">{p.text}</Text>
+                        {p.likes ? (
+                          <Text variant="caption" faint style={{ marginTop: 2 }}>
+                            ♥ {p.likes}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </Card>
+            ) : null}
           </ScrollView>
         );
       }

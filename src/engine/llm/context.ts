@@ -10,6 +10,8 @@ import type { SceneSnapshot } from '../core/llmTypes';
 import { makeQuery } from '../core/query';
 import type { BioFact, Conversation, Relationship, Sim, SimId, Venue, VenueId, WorldState } from '../core/types';
 import { positionOf } from '../space/nav';
+import { activeNews } from '../systems/story';
+import { standingLabel } from '../systems/social';
 import { haversineKm, kmToMiles } from '../core/util';
 import { recentMemories, relevantMemories } from './memory';
 
@@ -23,6 +25,8 @@ export interface WorldContext {
   weather: string;
   region: string;
   culture: string;
+  /** what the city is dealing with this week */
+  news?: string;
 }
 
 export interface VenueContext {
@@ -43,6 +47,8 @@ export interface VenueContext {
   cleanliness: number;
   safety: number;
   isHome: boolean;
+  /** how this place regards the actor (regular, tips well, caused trouble, banned) */
+  standing?: string;
   /** item ids obtainable here (venue sells + inventory + pantry when home) */
   allowedItems: string[];
   /** venues the actor may move to (id + name + archetype + distance) */
@@ -105,6 +111,8 @@ export interface NpcContext {
   whereabouts?: string;
   /** room inside the venue (from the floor plan) */
   room?: string;
+  /** slow-arc moments already shared with the actor */
+  milestones?: string[];
 }
 
 export interface SceneContext {
@@ -165,6 +173,7 @@ export function buildSceneContext(scene: SceneSnapshot, opts: BuildContextOption
     partOfDay: clock.partOfDay.replace('_', ' '),
     season: clock.season,
     holidays: clock.day.holidays.map((h) => content.holidays[h]?.name ?? titleWords(h)),
+    news: activeNews(state).map((n) => `${n.headline}. ${n.body}`).join(' ') || undefined,
     weather: `${w.condition.replace(/_/g, ' ')}, ${Math.round(w.tempF)}°F${w.windMph >= 15 ? `, windy (${Math.round(w.windMph)} mph)` : ''}${w.alert ? ` — ALERT: ${w.alert}` : ''}${clock.isDaylight ? '' : ', dark out'}`,
     region: `${state.region.name}, ${state.region.state}`,
     culture: state.region.culture,
@@ -210,6 +219,7 @@ export function buildSceneContext(scene: SceneSnapshot, opts: BuildContextOption
     cleanliness: Math.round(venue.cleanliness),
     safety: Math.round(venue.safety),
     isHome,
+    standing: standingLabel(venue, actor.id, now),
     allowedItems,
     knownVenues,
   };
@@ -240,6 +250,10 @@ export function buildSceneContext(scene: SceneSnapshot, opts: BuildContextOption
       const sim = state.sims[n.id];
       if (sim) n.room = roomName(positionOf(state, layout, sim).roomId);
     }
+  }
+  for (const n of npcs) {
+    const ms = actor.relationships[n.id]?.milestones;
+    if (ms?.length) n.milestones = ms.map((m) => `${m.id.replace(/_/g, ' ')} (${Math.max(0, Math.floor((now - m.at) / 1440))} days ago)`);
   }
   for (const rs of remote) {
     const n = buildNpc(state, actor, rs, content, now, rs.id === opts.primaryId);
@@ -638,11 +652,13 @@ export function renderSceneContext(ctx: SceneContext): string {
   push('## World');
   push(`- When: ${w.dateLabel}, ${w.timeLabel} (${w.partOfDay}, ${w.season})${w.holidays.length ? ` — ${w.holidays.join(', ')}` : ''}`);
   push(`- Weather: ${w.weather}`);
+  if (w.news) push(`- In the news this week: ${w.news}`);
   push(`- Where: ${w.region}. Local flavor: ${w.culture}`);
 
   const v = ctx.venue;
   push('');
   push(`## Venue: ${v.name}${v.isHome ? ' (home)' : ''}`);
+  if (v.standing) push(`- They know ${ctx.actor.firstName} here: ${v.standing}. Staff act accordingly (a regular gets a nod and a warmer welcome; someone who caused trouble gets watched; banned means turned away).`);
   push(`- Kind: ${v.archetype}${v.typesPhrase ? ` (${v.typesPhrase})` : ''}`);
   const gl = [v.rating, v.priceLevel ? `price ${v.priceLevel}` : undefined].filter(Boolean).join(', ');
   if (gl) push(`- Google: ${gl}`);
@@ -686,6 +702,7 @@ export function renderSceneContext(ctx: SceneContext): string {
     if (n.currentAction) push(`- Doing now: ${n.currentAction}`);
     if (n.schedule) push(`- Schedule: ${n.schedule}`);
     push(`- Relationship with ${a.firstName} (from ${n.firstName}'s side): ${n.relationship}; ${n.relationshipNumbers}`);
+    if (n.milestones?.length) push(`- History together: ${n.milestones.join('; ')}`);
     if (n.grudges.length) push(`- Grudges: ${n.grudges.join(' | ')}`);
     if (n.promises.length) push(`- Open promises: ${n.promises.join(' | ')}`);
     if (n.moneyOwed) push(`- Money: ${n.moneyOwed}`);

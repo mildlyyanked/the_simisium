@@ -41,6 +41,8 @@ export type SystemId =
   | 'communication'
   | 'npcAI'
   | 'lifeEvents'
+  | 'story'
+  | 'social'
   | 'story';
 
 /**

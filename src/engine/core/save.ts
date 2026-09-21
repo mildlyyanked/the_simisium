@@ -38,6 +38,9 @@ export function migrate(state: WorldState, from: number): WorldState {
   s.flags ||= {};
   s.conversations ||= {};
   s.layouts ||= {};
+  s.dilemmas ||= [];
+  s.news ||= [];
+  s.feed ||= [];
   return s;
 }
 

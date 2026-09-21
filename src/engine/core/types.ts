@@ -204,6 +204,8 @@ export interface Venue {
   ownerHouseholdId?: HouseholdId;
   rooms: Room[];
   objectIds: ObjectId[];
+  /** how this place regards each controlled sim (regular, good tipper, trouble, banned) */
+  standing?: Record<SimId, VenueStanding>;
   staffSimIds: SimId[];
   /** sims typically found here (regulars, residents) */
   regularSimIds: SimId[];
@@ -809,6 +811,8 @@ export interface Relationship {
   grudges: { text: string; at: number; weight: number }[];
   /** debts between people */
   moneyOwed: number; // positive = other owes this sim
+  /** slow-arc moments reached with this person (met, first real talk, first text, hung out, came over…) */
+  milestones?: { id: string; at: number }[];
   /** decay pause (e.g. family) */
   decayRate: number; // per day
 }
@@ -1434,6 +1438,74 @@ export interface Conversation {
   topic?: string;
 }
 
+export interface VenueStanding {
+  score: number; // −100..100
+  visits: number;
+  lastVisitAt: number;
+  /** short remembered facts: "tips well", "caused a scene" */
+  notes: string[];
+  bannedUntil?: number;
+}
+
+export interface DilemmaOption {
+  id: string;
+  label: string;
+  hint?: string;
+}
+
+/** A hard choice with a clock. Unanswered by the deadline, the default happens. */
+export interface Dilemma {
+  id: string;
+  templateId: string;
+  simId: SimId;
+  title: string;
+  body: string;
+  createdAt: number;
+  deadlineAt: number;
+  options: DilemmaOption[];
+  defaultOptionId: string;
+  /** people and numbers this instance is about */
+  actors: Record<string, SimId>;
+  amounts: Record<string, number>;
+  resolved?: { optionId: string; at: number; byDeadline: boolean };
+}
+
+export interface NewsEffects {
+  transitDown?: boolean;
+  rideshareSurge?: number;
+  gasMultiplier?: number;
+  travelMultiplier?: number;
+  contagionMultiplier?: number;
+  priceMultiplier?: number;
+  layoffRisk?: boolean;
+  closedVenueId?: VenueId;
+  moodlet?: { emotion: string; label: string; intensity: number };
+}
+
+/** Something happening to the whole city for a few days. */
+export interface NewsItem {
+  id: string;
+  kind: string;
+  headline: string;
+  body: string;
+  startedAt: number;
+  endsAt: number;
+  effects: NewsEffects;
+  venueId?: VenueId;
+}
+
+export interface FeedPost {
+  id: string;
+  simId: SimId;
+  at: number;
+  text: string;
+  likes: number;
+  venueId?: VenueId;
+  kind: 'life' | 'work' | 'hobby' | 'news' | 'reply';
+  /** post this replies to */
+  replyTo?: string;
+}
+
 export interface WorldMeta {
   saveId: string;
   version: number;
@@ -1490,6 +1562,9 @@ export interface WorldState {
   conversations: Record<ConversationId, Conversation>;
   /** floor plans, generated lazily and kept so they stay consistent */
   layouts: Record<VenueId, VenueLayout>;
+  dilemmas: Dilemma[];
+  news: NewsItem[];
+  feed: FeedPost[];
   rngState: number[];
   stats: WorldStats;
   /** places cache: placeId → data (so worlds stay stable offline) */

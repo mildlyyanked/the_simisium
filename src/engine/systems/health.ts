@@ -31,6 +31,7 @@
  * Action id prefix handled: `health:`
  */
 import { addMoodlet, transact } from '../core/effects';
+import { newsEffects } from './story';
 import type { GameEvent } from '../core/events';
 import { shortId } from '../core/ids';
 import type { ActionResult, System, SystemContext } from '../core/systems';
@@ -496,7 +497,7 @@ function tickContagion(ctx: SystemContext, minutes: number): void {
         for (const other of sims) {
           if (other === carrier || hasIllness(other, ill.defId)) continue;
           if (ill.defId === 'flu' && num(other.flags['health:fluShotYear']) === ctx.clock.day.year && ctx.rng.chance(0.6)) continue;
-          let p = 0.012 * (0.3 + ill.severity / 100) * (1.5 - other.body.immune / 100) * crowd * hours;
+          let p = 0.012 * (newsEffects(ctx.state).contagionMultiplier ?? 1) * (0.3 + ill.severity / 100) * (1.5 - other.body.immune / 100) * crowd * hours;
           if (carrier.needs.hygiene < 25) p *= 1.3;
           if (carrier.householdId && carrier.householdId === other.householdId) p *= 1.5;
           if (ctx.rng.chance(Math.min(0.5, p))) contract(ctx, other, def);

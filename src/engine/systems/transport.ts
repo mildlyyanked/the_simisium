@@ -16,6 +16,8 @@ import type { System, SystemContext } from '../core/systems';
 import type { ActionDef, LoanRef, RecurringBill, Requirement, Sim, SimId, TravelMode, Vehicle, VehicleId, Venue, VenueId } from '../core/types';
 import { DAY, clamp, clamp100, formatDuration, formatMoney, isFiniteNumber, kmToMiles, round2 } from '../core/util';
 import type { VehicleDef } from '../content/types';
+import { newsEffects } from './story';
+import { isBanned } from './social';
 import { CYCLING_KINDS, DRIVING_KINDS, TRANSIT_FARE, canDrive, driveableVehicle, estimateTravel, fuelUnitsForTrip, isBadWeather, isNight, rideableBike, transitWaitMinutes, vehiclesAt } from './transportUtil';
 
 type Ctx = SystemContext;
@@ -239,7 +241,7 @@ function travelActions(ctx: Ctx, sim: Sim): ActionDef[] {
   const car = driveableVehicle(state, sim, here);
   const bike = rideableBike(state, sim, here);
   const hasBusPass = (sim.inventory.consumables.bus_pass ?? 0) > 0;
-  const transitOk = state.region.transitQuality > 0.15;
+  const transitOk = state.region.transitQuality > 0.15 && !newsEffects(state).transitDown;
   const scooterOk = state.region.density === 'urban';
   const phoneOk = !sim.flags.phone_dead && sim.phone.plan.active;
   const isChild = sim.lifeStage === 'infant' || sim.lifeStage === 'toddler' || sim.lifeStage === 'child';
@@ -247,6 +249,7 @@ function travelActions(ctx: Ctx, sim: Sim): ActionDef[] {
   for (const v of destinations(ctx, sim)) {
     const km = ctx.query.distanceKm(here, v.id);
     if (km <= 0) continue;
+    if (isBanned(v, sim.id, state.time.minute)) continue;
     const add = (mode: TravelMode, extra: Partial<ActionDef> = {}) => {
       const est = estimateTravel(state, here, v.id, mode, { vehicle: mode === 'drive' ? car : undefined, hasBusPass });
       const label = `${modeVerb(mode)} to ${v.name} (${formatDuration(est.minutes)}${est.cost ? `, ${formatMoney(est.cost)}` : ''}${mode === 'drive' && est.cost ? ' gas' : ''})`;

@@ -4,6 +4,7 @@
  */
 import { minuteOfDay } from '../core/clock';
 import { liquidCash } from '../core/effects';
+import { newsEffects } from './story';
 import type { Sim, TravelMode, Vehicle, VenueId, WorldState } from '../core/types';
 import { clamp01, haversineKm, kmToMiles, round2 } from '../core/util';
 
@@ -108,8 +109,9 @@ export function fuelUnitsForTrip(vehicle: Pick<Vehicle, 'mpg' | 'fuelType' | 'ki
 export function fuelCostForTrip(state: WorldState, vehicle: Pick<Vehicle, 'mpg' | 'fuelType' | 'kind'>, km: number): number {
   const units = fuelUnitsForTrip(vehicle, km);
   if (vehicle.fuelType === 'electric') return round2(units * 0.16);
-  if (vehicle.fuelType === 'diesel') return round2(units * (state.economy.gasPrice + 0.6));
-  return round2(units * state.economy.gasPrice);
+  const gas = state.economy.gasPrice * (newsEffects(state).gasMultiplier ?? 1);
+  if (vehicle.fuelType === 'diesel') return round2(units * (gas + 0.6));
+  return round2(units * gas);
 }
 
 /**
@@ -127,7 +129,8 @@ export function estimateTravel(
   if (fromVenueId === toVenueId || straight === 0) return { minutes: 0, cost: 0, distanceKm: 0 };
   const km = straight * ROAD_FACTOR[mode];
   const speed = MODE_SPEED_KMH[mode];
-  const moving = (km / speed) * 60;
+  const news = newsEffects(state);
+  const moving = (km / speed) * 60 * (mode === 'walk' || mode === 'bike' ? 1 : news.travelMultiplier ?? 1);
   let minutes = moving;
   let cost = 0;
   switch (mode) {
@@ -156,7 +159,7 @@ export function estimateTravel(
     case 'taxi': {
       minutes += rideshareWaitMinutes(state);
       if (isBadWeather(state)) minutes *= 1.15;
-      const surge = mode === 'rideshare' ? rideshareSurge(state) : 1.2;
+      const surge = (mode === 'rideshare' ? rideshareSurge(state) : 1.2) * (news.rideshareSurge ?? 1);
       cost = Math.max(RIDESHARE_MIN_FARE, (RIDESHARE_BASE + RIDESHARE_PER_KM * km) * surge);
       break;
     }

@@ -11,6 +11,7 @@ import { EventBus, type GameEvent } from './events';
 import { newConversationId, newEventId, shortId } from './ids';
 import { adjacentFree, ensureLayout, findPath, nearestWalkable, positionOf, roomAt, walkMinutes, type Tile } from '../space';
 import { quickActions, resolveIntent, type QuickAction } from './intents';
+import { staffOpinion } from '../systems/social';
 import type { InteractionOutcome, LLMService, SceneSnapshot } from './llmTypes';
 import { makeQuery, simName } from './query';
 import { RNG } from './rng';
@@ -484,8 +485,8 @@ export class Engine {
       const other = this.state.sims[o];
       if (!other) continue;
       if (!actor.relationships[o]) {
-        this.bus.emit({ type: 'sim:met', simId, otherId: o, venueId: actor.location.venueId });
         this.applyEffects(simId, { relationships: [{ simId: o, familiarity: 3, mutual: true }] }, 'meet');
+        this.bus.emit({ type: 'sim:met', simId, otherId: o, venueId: actor.location.venueId });
         this.state.stats.simsMet += 1;
       }
     }
@@ -681,6 +682,10 @@ export class Engine {
     for (const m of outcome.npcMemories ?? []) {
       const npc = this.state.sims[m.simId];
       if (!npc) continue;
+      if (this.state.player.controlledSimIds.includes(simId)) {
+        const venue = this.state.venues[sim.location.venueId];
+        if (venue) staffOpinion(this.state, venue, npc.id, sim, m.valence ?? 0, this.now);
+      }
       npc.memory.push({ id: shortId(this.rng, 'mem'), kind: 'conversation', at: this.now, text: m.text.slice(0, 400), participants: [simId], venueId: npc.location.venueId, salience: clamp100(m.salience ?? 40), valence: Math.max(-1, Math.min(1, m.valence ?? 0)), tags: [source] });
     }
     // the actor remembers too

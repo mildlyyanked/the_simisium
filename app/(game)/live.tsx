@@ -11,6 +11,13 @@ import { useTheme } from '@/ui/theme';
 import { openStatus } from '@/ui/format';
 import { haptic } from '@/ui/haptics';
 
+function countdown(minutes: number): string {
+  if (minutes < 60) return `${Math.max(1, Math.round(minutes))} min`;
+  if (minutes < 24 * 60) return `${Math.floor(minutes / 60)}h ${Math.round(minutes % 60)}m`;
+  const d = Math.floor(minutes / 1440);
+  return `${d} day${d === 1 ? '' : 's'} ${Math.floor((minutes % 1440) / 60)}h`;
+}
+
 export default function LiveScreen(): React.ReactElement {
   const t = useTheme();
   const router = useRouter();
@@ -86,6 +93,7 @@ export default function LiveScreen(): React.ReactElement {
   const status = openStatus(venue.google?.openingPeriods, engine.state.epoch, engine.state.time.minute, engine.ctx().query.isVenueOpen(venue.id));
   const here = engine.ctx().query.simsAt(venue.id).filter((s) => s.id !== sim.id);
   const roomName = sim.travel ? undefined : engine.roomNameOf(sim.id);
+  const pendingDilemmas = (engine.state.dilemmas ?? []).filter((d) => d.simId === sim.id && !d.resolved);
   const autonomy = sim.flags.autonomy === true;
   const holidays = engine.clock.day.holidays;
 
@@ -152,6 +160,21 @@ export default function LiveScreen(): React.ReactElement {
           </View>
         )}
       </View>
+
+      {/* pending decisions */}
+      {pendingDilemmas.map((d) => (
+        <Pressable key={d.id} onPress={() => perform(`story:review:${d.id}`)} accessibilityRole="button" accessibilityLabel={`Decide: ${d.title}`} style={{ marginHorizontal: 12, marginTop: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: t.colors.accentSoft, borderWidth: 1, borderColor: t.colors.accent, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Icon name="scale-balance" size={18} color={t.colors.accent} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text variant="bodyStrong" numberOfLines={1} color={t.colors.accent}>
+              {d.title}
+            </Text>
+            <Text variant="caption" muted numberOfLines={1}>
+              {d.deadlineAt - engine.state.time.minute <= 0 ? 'Deciding now' : `Decide within ${countdown(d.deadlineAt - engine.state.time.minute)} · tap to choose`}
+            </Text>
+          </View>
+        </Pressable>
+      ))}
 
       {/* conversation banner */}
       {conversation && partner ? (

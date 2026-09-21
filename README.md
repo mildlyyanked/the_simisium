@@ -68,6 +68,8 @@ Presets in Settings: **Balanced** (above), **Quality** (Sonnet 5 dialogue, Opus 
 
 Ordinary world interactions never touch a model: "go to work", "take a shower", "make breakfast", "drive home" and the like are routed to the simulation's own deterministic actions (and offered as one-tap chips when they fit the moment), so the daily loop behaves the same every time. The model is reserved for what needs a human in the loop: conversations and open-ended attempts.
 
+The world pushes back: a few times a month you face a real choice with a clock (a friend's loan, a competing offer, a parent in hospital) whose consequences arrive weeks later; the city has news that changes prices, commutes and moods for days; the people you know post about their lives, talk about you to each other, and share a history with you that the game recognises moment by moment; and every place keeps a short opinion of you.
+
 Every LLM output is a typed JSON document (zod-validated) whose effects pass through the same `validateEffects` envelope as scripted actions: a conversation can move a relationship by a bounded amount, hand over an item the NPC actually has, or start a fight — it cannot print money or teleport. The narrator sees a compact scene snapshot (venue, Google data, who is present with the facts you have discovered about them, your needs/mood, recent memories), and every NPC's revealed bio facts are frozen once discovered so characters stay consistent across sessions.
 
 ## How the world is built

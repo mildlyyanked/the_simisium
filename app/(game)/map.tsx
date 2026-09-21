@@ -6,6 +6,7 @@ import { useSettings } from '@/store/settings';
 import { useActions, useActiveSim, useEngine, useVenueOf } from '@/store/selectors';
 import type { Venue, VenueId } from '@engine/core/types';
 import { haversineKm } from '@engine/core/util';
+import { standingLabel } from '@engine/systems/social';
 import { Screen, Text, Button, Chip, ChipRow, Sheet, VenueCard, SectionHeader, KeyValue, Icon, EmptyState, SimAvatar, Pill } from '@/ui/components';
 import { ARCHETYPE_GROUP, ARCHETYPE_ICON, GROUP_ORDER, TRAVEL_ICON, TRAVEL_LABEL, type ArchetypeGroup } from '@/ui/icons';
 import { useTheme } from '@/ui/theme';
@@ -145,6 +146,7 @@ export default function MapScreen(): React.ReactElement {
   }
   const sel = selected ? engine.state.venues[selected] : undefined;
   const travelActions = sel ? actions.filter((a) => a.action.id.startsWith(`travel:${sel.id}:`)) : [];
+  const standing = sel ? standingLabel(sel, sim.id, engine.state.time.minute) : undefined;
   const carElsewhere = useMemo(() => {
     if (!engine || !sim || !sel) return null;
     const hh = sim.householdId ? engine.state.households[sim.householdId] : undefined;
@@ -224,6 +226,14 @@ export default function MapScreen(): React.ReactElement {
             ) : null}
             {sel.id !== here.id ? (
               <View style={{ gap: 8 }}>
+                {standing ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <Icon name={/banned|not welcome|trouble/.test(standing) ? 'account-alert-outline' : 'account-heart-outline'} size={16} color={/banned|not welcome|trouble/.test(standing) ? t.colors.danger : t.colors.success} />
+                    <Text variant="caption" muted style={{ flex: 1 }}>
+                      They know you here: {standing}.
+                    </Text>
+                  </View>
+                ) : null}
                 <SectionHeader title="Go here" />
                 {carElsewhere ? (
                   <Text variant="caption" faint style={{ marginBottom: 6 }}>

@@ -56,6 +56,7 @@ export function makeQuery(state: WorldState, content: ContentCatalog): WorldQuer
       const m = minute ?? state.time.minute;
       if (v.archetype === 'home' || v.archetype === 'apartment_building' || v.archetype === 'park' || v.archetype === 'atm' || v.archetype === 'transit_stop' || v.archetype === 'parking' || v.archetype === 'ev_charger') return true;
       if (v.google?.businessStatus && v.google.businessStatus !== 'OPERATIONAL') return false;
+      if ((state.news ?? []).some((n) => n.effects.closedVenueId === venueId && n.startedAt <= m && n.endsAt > m)) return false;
       const wd = weekdayAt(state.epoch, m);
       const mod = minuteOfDay(m);
       const periods = v.google?.openingPeriods;

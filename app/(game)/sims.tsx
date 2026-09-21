@@ -11,6 +11,17 @@ import { usePortraits } from '@/store/portraits';
 import { clockShort, dayLabelShort, money } from '@/ui/format';
 
 const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+const MILESTONE_LABEL: Record<string, string> = {
+  met: 'Met',
+  first_real_talk: 'First real conversation',
+  first_text: 'First text',
+  hung_out: 'Hung out',
+  came_over: 'Came over to your place',
+  met_their_friends: 'Met their friends',
+  dating: 'Started seeing each other',
+  exclusive: 'Became exclusive',
+  married: 'Got married',
+};
 
 function PortraitButton({ sim }: { sim: Sim }): React.ReactElement {
   const generating = usePortraits((p) => !!p.generating[sim.id]);
@@ -240,6 +251,15 @@ function Profile({ sim, viewer }: { sim: Sim; viewer: Sim }): React.ReactElement
             <Chip key={tr} label={CONTENT.traits[tr]?.name ?? tr} icon={CONTENT.traits[tr]?.icon} size="sm" />
           ))}
         </ChipRow>
+      ) : null}
+      {rel?.milestones?.length ? (
+        <Card title="History together" icon="timeline-clock-outline">
+          {[...rel.milestones].reverse().map((m) => (
+            <Text key={m.id} variant="caption" muted>
+              {dayLabelShort(engine.state.epoch, m.at)} · {MILESTONE_LABEL[m.id] ?? m.id.replace(/_/g, ' ')}
+            </Text>
+          ))}
+        </Card>
       ) : null}
       <Card title="What you know" subtitle={hidden > 0 ? `${hidden} thing${hidden === 1 ? '' : 's'} you haven't learned yet` : sim.bio.generated ? 'You know their whole story' : 'You barely know them'} icon="book-account-outline">
         {revealed.length === 0 ? (

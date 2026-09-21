@@ -60,6 +60,24 @@ export default function HereScreen(): React.ReactElement {
     );
   }
   const { layout, objects, people, me, room, byRoom } = model;
+  const presentIds = new Set(people.map((p) => p.sim.id));
+  const staffAndRegulars = [
+    ...venue.staffSimIds
+      .map((id) => engine.state.sims[id])
+      .filter((s) => s && s.body.alive)
+      .map((s) => {
+        const shifts = s.career.job?.employerVenueId === venue.id ? s.career.job.shifts : [];
+        const days = [...new Set(shifts.map((sh) => ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'][sh.day]))].join(' ');
+        const hours = shifts.length ? `${Math.floor(shifts[0].start / 60)}–${Math.floor(shifts[0].end / 60)}h` : '';
+        return { sim: s, note: `${s.career.job?.title ?? 'staff'}${days ? ` · ${days} ${hours}` : ''}${presentIds.has(s.id) ? ' · here now' : ''}` };
+      }),
+    ...venue.regularSimIds
+      .filter((id) => !venue.staffSimIds.includes(id))
+      .map((id) => engine.state.sims[id])
+      .filter((s) => s && s.body.alive && (sim.relationships[s.id]?.familiarity ?? 0) > 0)
+      .slice(0, 6)
+      .map((s) => ({ sim: s, note: `regular${presentIds.has(s.id) ? ' · here now' : ''}` })),
+  ].slice(0, 10);
   const here = people.filter((p) => !p.isPlayer);
   const objectActions = objectSheet ? actions.filter((a) => a.action.target?.kind === 'object' && a.action.target.id === objectSheet) : [];
   const sheetObject = objectSheet ? objects.find((o) => o.obj.id === objectSheet) : undefined;
@@ -128,6 +146,15 @@ export default function HereScreen(): React.ReactElement {
             );
           })}
         </ChipRow>
+        {staffAndRegulars.length ? (
+          <Card title="Who you'd expect here" icon="account-clock-outline">
+            {staffAndRegulars.map((p) => (
+              <Text key={p.sim.id} variant="caption" muted numberOfLines={1}>
+                {p.sim.identity.firstName} · {p.note}
+              </Text>
+            ))}
+          </Card>
+        ) : null}
         {byRoom.map(({ room: r, people: ppl, objects: objs }) => (
           <Card key={r.id} title={r.name} icon={me.roomId === r.id ? 'map-marker-account' : undefined}>
             {ppl.length ? (

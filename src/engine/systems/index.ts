@@ -26,6 +26,8 @@ import { entertainmentSystem } from './entertainment';
 import { communicationSystem } from './communication';
 import { npcAISystem } from './npcAI';
 import { lifeEventsSystem } from './lifeEvents';
+import { storySystem } from './story';
+import { socialSystem } from './social';
 
 export const SYSTEMS: System[] = [
   calendarSystem,
@@ -48,7 +50,6 @@ export const SYSTEMS: System[] = [
   entertainmentSystem,
   communicationSystem,
   npcAISystem,
-  lifeEventsSystem,
-];
+  lifeEventsSystem, storySystem, socialSystem];
 
 export { holidayResolver } from './calendar';
