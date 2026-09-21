@@ -12,6 +12,7 @@ import { newConversationId, newEventId, shortId } from './ids';
 import { adjacentFree, ensureLayout, findPath, nearestWalkable, positionOf, roomAt, walkMinutes, type Tile } from '../space';
 import { quickActions, resolveIntent, type QuickAction } from './intents';
 import { staffOpinion } from '../systems/social';
+import { installGeneratedDilemma, installTemplateDilemma } from '../systems/story';
 import type { InteractionOutcome, LLMService, SceneSnapshot } from './llmTypes';
 import { makeQuery, simName } from './query';
 import { RNG } from './rng';
@@ -177,7 +178,34 @@ export class Engine {
   // ---------------------------------------------------------------------
   // Lifecycle
   // ---------------------------------------------------------------------
+  /** Dilemma requests the story system posted for the model (the store drains these). */
+  takeStoryRequests(): { simId: SimId; theme: string }[] {
+    const out: { simId: SimId; theme: string }[] = [];
+    for (const [k, v] of Object.entries(this.state.flags)) {
+      if (!k.startsWith('story:request:') || typeof v !== 'string') continue;
+      try {
+        const req = JSON.parse(v) as { simId: SimId; theme: string };
+        out.push(req);
+      } catch {
+        /* ignore */
+      }
+      delete this.state.flags[k];
+    }
+    return out;
+  }
+
+  /** Install a model-written dilemma (or fall back to the catalog when the model produced nothing). */
+  installDilemma(simId: SimId, theme: string, generated?: import('./types').GeneratedDilemma): void {
+    const sim = this.state.sims[simId];
+    if (!sim) return;
+    const ctx = this.ctx();
+    if (generated) installGeneratedDilemma(ctx, sim, generated, theme);
+    else installTemplateDilemma(ctx, sim, theme);
+    this.notify();
+  }
+
   init(isNew: boolean): void {
+    this.state.flags['story:llm'] = !!this.llm?.isLive() && !!this.llm.generateDilemma;
     const ctx = this.ctx();
     for (const s of this.systems) s.onInit?.(ctx);
     this.bus.emit({ type: isNew ? 'world:new_game' : 'world:loaded' });

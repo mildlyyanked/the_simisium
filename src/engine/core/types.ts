@@ -1468,6 +1468,37 @@ export interface Dilemma {
   actors: Record<string, SimId>;
   amounts: Record<string, number>;
   resolved?: { optionId: string; at: number; byDeadline: boolean };
+  /** 'llm' when the model wrote it from this life; 'template' for the offline catalog */
+  source?: 'llm' | 'template';
+  /** consequences of each option when the model wrote the dilemma (stored, then deterministic) */
+  generated?: Record<string, GeneratedConsequence>;
+}
+
+export interface GeneratedFollowUp {
+  inDays: number;
+  chance: number; // 0..1
+  text: string;
+  effects?: EffectBundle;
+  otherEffects?: Record<SimId, EffectBundle>;
+}
+
+export interface GeneratedConsequence {
+  narration: string;
+  effects: EffectBundle;
+  otherEffects?: Record<SimId, EffectBundle>;
+  flags?: string[];
+  followUps: GeneratedFollowUp[];
+}
+
+/** A dilemma as the model returns it, before it becomes state. */
+export interface GeneratedDilemma {
+  title: string;
+  body: string;
+  deadlineHours: number;
+  defaultOptionId: string;
+  options: { id: string; label: string; hint?: string; consequence: GeneratedConsequence }[];
+  /** people the dilemma is about (resolved sim ids) */
+  actors: SimId[];
 }
 
 export interface NewsEffects {

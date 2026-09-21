@@ -15,7 +15,7 @@
  * Action ids: story:decide:<dilemmaId>:<optionId>, story:defer:<dilemmaId>, story:review:<dilemmaId>
  * World flags: story:lastDilemma:<simId>, story:lastNews, dilemma:<templateId>:<optionId>:<simId>
  */
-import type { ActionDef, Dilemma, DilemmaOption, EffectBundle, EmotionId, NewsEffects, NewsItem, Sim, SimId, VenueId, WorldState } from '../core/types';
+import type { ActionDef, Dilemma, DilemmaOption, EffectBundle, EmotionId, GeneratedDilemma, NewsEffects, NewsItem, Sim, SimId, VenueId, WorldState } from '../core/types';
 import type { ActionResult, System, SystemContext } from '../core/systems';
 import { shortId } from '../core/ids';
 import { clamp, DAY, formatMoney, HOUR, round2 } from '../core/util';
@@ -655,18 +655,76 @@ function rollDilemma(ctx: SystemContext, sim: Sim): void {
       break;
     }
   }
+  if (state.flags['story:llm'] === true) {
+    // the model writes it from this life; the store picks the request up and installs the result
+    state.flags[`story:request:${sim.id}`] = JSON.stringify({ simId: sim.id, theme: t.id, at: now });
+    state.flags[`story:lastDilemma:${sim.id}`] = now;
+    ctx.emit({ type: 'custom', kind: 'story:dilemma_request', simId: sim.id, payload: { theme: t.id } });
+    return;
+  }
+  installTemplateDilemma(ctx, sim, t.id);
+}
+
+/** Offline catalog: instantiate a template for a sim. */
+export function installTemplateDilemma(ctx: SystemContext, sim: Sim, templateId: string): Dilemma | undefined {
+  const state = ctx.state;
+  const now = state.time.minute;
+  const t = TEMPLATES.find((x) => x.id === templateId && x.condition(ctx, sim)) ?? TEMPLATES.find((x) => x.condition(ctx, sim));
+  if (!t) return undefined;
   const setup = t.setup(ctx, sim);
-  if (!setup) return;
-  const d: Dilemma = { id: shortId(ctx.rng, 'dil'), templateId: t.id, simId: sim.id, title: '', body: '', createdAt: now, deadlineAt: now + t.deadlineHours * HOUR, options: [], defaultOptionId: t.defaultOptionId, actors: setup.actors, amounts: setup.amounts };
+  if (!setup) return undefined;
+  const d: Dilemma = { id: shortId(ctx.rng, 'dil'), templateId: t.id, simId: sim.id, title: '', body: '', createdAt: now, deadlineAt: now + t.deadlineHours * HOUR, options: [], defaultOptionId: t.defaultOptionId, actors: setup.actors, amounts: setup.amounts, source: 'template' };
   d.title = t.title(ctx, d);
   d.body = t.body(ctx, d);
   d.options = t.options(ctx, d);
+  state.dilemmas ||= [];
   state.dilemmas.push(d);
   state.flags[`story:lastDilemma:${sim.id}`] = now;
   state.flags[`story:last:${t.id}:${sim.id}`] = now;
   ctx.log({ text: `${d.title}. ${d.body}`, kind: 'event', simId: sim.id, venueId: sim.location.venueId, importance: 3, meta: { dilemma: d.id } });
   raiseInterrupt(ctx, d);
   ctx.emit({ type: 'custom', kind: 'story:dilemma', simId: sim.id, payload: { id: d.id, templateId: t.id } });
+  return d;
+}
+
+/** The model wrote one: turn it into state, log it, and raise the interrupt. */
+export function installGeneratedDilemma(ctx: SystemContext, sim: Sim, g: GeneratedDilemma, theme: string): Dilemma {
+  const state = ctx.state;
+  const now = state.time.minute;
+  const d: Dilemma = {
+    id: shortId(ctx.rng, 'dil'),
+    templateId: `llm:${theme}`,
+    simId: sim.id,
+    title: g.title,
+    body: g.body,
+    createdAt: now,
+    deadlineAt: now + g.deadlineHours * HOUR,
+    options: g.options.map((o) => ({ id: o.id, label: o.label, hint: o.hint })),
+    defaultOptionId: g.defaultOptionId,
+    actors: Object.fromEntries(g.actors.map((id, i) => [`p${i}`, id])),
+    amounts: {},
+    source: 'llm',
+    generated: Object.fromEntries(g.options.map((o) => [o.id, o.consequence])),
+  };
+  state.dilemmas ||= [];
+  state.dilemmas.push(d);
+  ctx.log({ text: `${d.title}. ${d.body}`, kind: 'event', simId: sim.id, venueId: sim.location.venueId, importance: 3, meta: { dilemma: d.id } });
+  raiseInterrupt(ctx, d);
+  ctx.emit({ type: 'custom', kind: 'story:dilemma', simId: sim.id, payload: { id: d.id, templateId: d.templateId } });
+  return d;
+}
+
+function applyGenerated(ctx: SystemContext, sim: Sim, d: Dilemma, optionId: string): void {
+  const c = d.generated?.[optionId];
+  if (!c) return;
+  if (c.narration) tell(ctx, sim, c.narration, 3);
+  ctx.applyEffects(sim.id, c.effects ?? {}, 'story:dilemma');
+  for (const [id, b] of Object.entries(c.otherEffects ?? {})) if (ctx.state.sims[id as SimId]) ctx.applyEffects(id as SimId, b, 'story:dilemma:other');
+  for (const f of c.flags ?? []) sim.flags[`dilemma:${f}`] = true;
+  for (const f of c.followUps ?? []) {
+    if (!ctx.rng.chance(f.chance)) continue;
+    ctx.schedule({ inMinutes: f.inDays * DAY + ctx.rng.int(8, 20) * HOUR, kind: 'story:followup_gen', label: d.title, simId: sim.id, payload: { dilemmaId: d.id, text: f.text, effects: f.effects ?? {}, otherEffects: f.otherEffects ?? {} } });
+  }
 }
 
 export function resolveDilemma(ctx: SystemContext, d: Dilemma, optionId: string, byDeadline: boolean): void {
@@ -674,10 +732,11 @@ export function resolveDilemma(ctx: SystemContext, d: Dilemma, optionId: string,
   const t = TEMPLATES.find((x) => x.id === d.templateId);
   const sim = ctx.query.simMaybe(d.simId);
   d.resolved = { optionId, at: ctx.state.time.minute, byDeadline };
-  if (!t || !sim) return;
+  if (!sim || (!t && !d.generated)) return;
   if (byDeadline) ctx.log({ text: `The deadline passes on "${d.title}". Not deciding was a decision.`, kind: 'event', simId: sim.id, importance: 2, meta: { dilemma: d.id } });
   sim.flags[`dilemma:${d.templateId}:${optionId}`] = true;
-  t.resolve(ctx, sim, d, optionId, byDeadline);
+  if (d.generated) applyGenerated(ctx, sim, d, optionId);
+  else t?.resolve(ctx, sim, d, optionId, byDeadline);
   ctx.state.pendingInterrupts = ctx.state.pendingInterrupts.filter((i) => !i.options.some((o) => o.actionId.includes(`:${d.id}`)));
   ctx.emit({ type: 'custom', kind: 'story:decided', simId: sim.id, payload: { id: d.id, templateId: d.templateId, optionId, byDeadline } });
 }
@@ -770,6 +829,12 @@ export const storySystem: System = {
       if (ev.kind === 'story:followup') {
         const d = (ctx.state.dilemmas ?? []).find((x) => x.id === ev.payload?.dilemmaId);
         if (d) followUp(ctx, sim, d, String(ev.payload?.key ?? ''));
+      }
+      if (ev.kind === 'story:followup_gen') {
+        const text = String(ev.payload?.text ?? '');
+        if (text) ctx.log({ text, kind: 'event', simId: sim.id, venueId: sim.location.venueId, importance: 3, meta: { source: 'story:followup' } });
+        ctx.applyEffects(sim.id, (ev.payload?.effects as EffectBundle) ?? {}, 'story:followup');
+        for (const [id, b] of Object.entries((ev.payload?.otherEffects as Record<string, EffectBundle>) ?? {})) if (ctx.state.sims[id as SimId]) ctx.applyEffects(id as SimId, b, 'story:followup:other');
       }
       if (ev.kind === 'story:bill_installment') {
         const amount = Number(ev.payload?.amount ?? 0);

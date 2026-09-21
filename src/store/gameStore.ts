@@ -8,7 +8,7 @@
 import { create } from 'zustand';
 import { Engine, type PerformResult } from '@engine/core/engine';
 import type { ActionAvailability } from '@engine/core/actions';
-import type { AvatarParams, Conversation, SimId, VenueId, WorldState } from '@engine/core/types';
+import type { AvatarParams, Conversation, GeneratedDilemma, SimId, VenueId, WorldState } from '@engine/core/types';
 import type { LLMUsage } from '@engine/core/llmTypes';
 import { deserialize, saveSummary, serialize } from '@engine/core/save';
 import { generateWorld } from '@engine/gen/worldgen';
@@ -108,6 +108,35 @@ function actionFitsConversation(action: { id: string; category?: string; target?
   if (action.id.startsWith('say') || action.id.startsWith('social:') || action.id.startsWith('romance:')) return true;
   if (conv.channel === 'text') return action.id.startsWith('phone:');
   return false;
+}
+
+let storyInflight = false;
+/** Hard choices are written by the model from the sim's life; requests are drained here, off the hot path. */
+async function pumpStory(get: () => GameState, set: (p: Partial<GameState>) => void): Promise<void> {
+  const { engine } = get();
+  if (!engine || storyInflight) return;
+  const reqs = engine.takeStoryRequests();
+  if (!reqs.length) return;
+  storyInflight = true;
+  try {
+    for (const req of reqs) {
+      const sim = engine.state.sims[req.simId];
+      if (!sim) continue;
+      let generated: GeneratedDilemma | undefined;
+      try {
+        generated = engine.llm?.generateDilemma ? await engine.llm.generateDilemma(engine.state, sim, { theme: req.theme }) : undefined;
+      } catch {
+        generated = undefined;
+      }
+      if (get().engine !== engine) return;
+      engine.installDilemma(req.simId, req.theme, generated ?? undefined);
+      get().pushToast(`Something's come up for ${sim.identity.firstName}.`, 'info');
+    }
+    set({ version: get().version + 1 });
+    scheduleSave(get);
+  } finally {
+    storyInflight = false;
+  }
 }
 
 const BUSY_LIMIT_MS = 90_000;
@@ -356,6 +385,7 @@ export const useGame = create<GameState>((set, get) => ({
     let res: PerformOutcome;
     try {
       res = engine.perform(simId, actionId, params);
+      void pumpStory(get, set);
     } catch (err) {
       get().pushToast(`Something went wrong: ${(err as Error).message}`, 'error');
       return null;
@@ -413,6 +443,7 @@ export const useGame = create<GameState>((set, get) => ({
     haptic.light();
     try {
       const res = await engine.freeform(simId, t);
+      void pumpStory(get, set);
       if (!res.ok) {
         get().pushToast(res.reason ?? 'Nothing happens.', 'warning');
         return;
@@ -445,6 +476,7 @@ export const useGame = create<GameState>((set, get) => ({
     haptic.light();
     try {
       const res = await engine.say(simId, conversationId, t);
+      void pumpStory(get, set);
       if (!res.ok) {
         get().pushToast(res.reason ?? 'The conversation stalled.', 'warning');
         set({ version: get().version + 1 });
@@ -467,6 +499,7 @@ export const useGame = create<GameState>((set, get) => ({
     haptic.select();
     try {
       const res = engine.wait(minutes);
+      void pumpStory(get, set);
       if (res.interrupted) haptic.warning();
     } catch (err) {
       get().pushToast(`Time hiccup: ${(err as Error).message}`, 'error');

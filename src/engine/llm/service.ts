@@ -7,7 +7,7 @@ import type { ContentCatalog } from '../content/types';
 import type { HolidayResolver } from '../core/clock';
 import type { InteractionOutcome, LLMService, LLMTask, LLMUsage, SceneSnapshot } from '../core/llmTypes';
 import { RNG } from '../core/rng';
-import type { ActionDef, BioFact, Conversation, EffectBundle, Sim, SimId, Venue, WorldState } from '../core/types';
+import type { ActionDef, BioFact, Conversation, EffectBundle, GeneratedDilemma, Sim, SimId, Venue, WorldState } from '../core/types';
 import { hashKey, OpenRouterClient, type ChatMessage, type LLMConfig } from './client';
 import { buildSceneContext, type SceneContext } from './context';
 import { FallbackLLMService } from './fallback';
@@ -18,8 +18,9 @@ import * as directorPrompt from './prompts/director';
 import * as narratePrompt from './prompts/narrate';
 import * as npcMessagePrompt from './prompts/npcMessage';
 import { portraitPrompt } from './prompts/portrait';
+import * as dilemmaPrompt from './prompts/dilemma';
 import * as summarizePrompt from './prompts/summarize';
-import { BioSchema, DirectorSchema, InteractionOutcomeSchema, InteractionOutcomeWireSchema, NpcMessageSchema, normalizeOutcomeShape, toJsonSchema, type InteractionOutcomeOut } from './schemas';
+import { BioSchema, DilemmaSchema, DilemmaWireSchema, DirectorSchema, InteractionOutcomeSchema, InteractionOutcomeWireSchema, NpcMessageSchema, normalizeOutcomeShape, toJsonSchema, type InteractionOutcomeOut } from './schemas';
 
 export interface OpenRouterServiceOptions extends LLMConfig {
   content: ContentCatalog;
@@ -36,6 +37,7 @@ const OUTCOME_SCHEMA = { name: 'interaction_outcome', schema: toJsonSchema(Inter
 const BIO_JSON_SCHEMA = { name: 'npc_bio', schema: toJsonSchema(BioSchema) };
 const DIRECTOR_JSON_SCHEMA = { name: 'story_beats', schema: toJsonSchema(DirectorSchema) };
 const NPC_MESSAGE_JSON_SCHEMA = { name: 'npc_message', schema: toJsonSchema(NpcMessageSchema) };
+const DILEMMA_JSON_SCHEMA = { name: 'dilemma', schema: toJsonSchema(DilemmaWireSchema) };
 
 export class OpenRouterLLMService implements LLMService {
   readonly client: OpenRouterClient;
@@ -242,6 +244,82 @@ export class OpenRouterLLMService implements LLMService {
     } catch (err) {
       this.failed('dialogue', err);
       return this.fallback.npcMessage(state, from, to, reason);
+    }
+  }
+
+  async generateDilemma(state: WorldState, sim: Sim, opts: { theme?: string } = {}): Promise<GeneratedDilemma | undefined> {
+    try {
+      const liquidCash = sim.finance.accounts.filter((a) => a.kind === 'cash' || a.kind === 'checking' || a.kind === 'savings').reduce((s, a) => s + a.balance, 0);
+      const messages: ChatMessage[] = [
+        { role: 'system', content: dilemmaPrompt.system() },
+        { role: 'user', content: dilemmaPrompt.user(state, sim, this.content, { theme: opts.theme, liquidCash }) },
+      ];
+      const res = await this.client.complete('director', messages, { schema: DILEMMA_JSON_SCHEMA, maxTokens: 2200, temperature: 0.85 });
+      const parsed = DilemmaSchema.safeParse(res.json);
+      if (!parsed.success) throw new Error(`dilemma: response did not match schema (${parsed.error.issues[0]?.message ?? 'unknown'})`);
+      this.report(res.usage);
+      const raw = parsed.data;
+      // resolve people: ids as given, or first/full names among the people this sim knows
+      const known = Object.keys(sim.relationships).map((id) => state.sims[id as SimId]).filter(Boolean);
+      const byName = new Map<string, SimId>();
+      for (const k of known) {
+        byName.set(k.identity.firstName.toLowerCase(), k.id);
+        byName.set(`${k.identity.firstName} ${k.identity.lastName}`.toLowerCase(), k.id);
+      }
+      const resolve = (id: string): SimId | undefined => (state.sims[id as SimId] ? (id as SimId) : byName.get(id.trim().toLowerCase().replace(/^@/, '')));
+      const fixBundle = (b: EffectBundle | undefined, allowActorTarget: boolean): EffectBundle => {
+        const out: EffectBundle = { ...(b ?? {}) };
+        delete out.moveTo;
+        delete out.schedule;
+        if (out.relationships) out.relationships = out.relationships.map((r) => ({ ...r, simId: (r.simId === sim.id && allowActorTarget ? sim.id : resolve(r.simId)) as SimId, mutual: false })).filter((r) => !!r.simId);
+        if (out.money && !out.money.memo) out.money.memo = 'A decision';
+        return out;
+      };
+      const fixOthers = (o: Record<string, EffectBundle> | undefined): Record<SimId, EffectBundle> | undefined => {
+        if (!o) return undefined;
+        const out: Record<SimId, EffectBundle> = {};
+        for (const [k, v] of Object.entries(o)) {
+          const id = resolve(k);
+          if (!id || id === sim.id || !v) continue;
+          const b = fixBundle(v as EffectBundle, true);
+          delete b.money;
+          delete b.items;
+          delete b.legal;
+          // their feelings are about the player
+          if (b.relationships) b.relationships = b.relationships.map((r) => ({ ...r, simId: sim.id, mutual: false }));
+          out[id] = b;
+        }
+        return Object.keys(out).length ? out : undefined;
+      };
+      const actors = new Set<SimId>();
+      const options = raw.options
+        .filter((o) => o && o.label)
+        .slice(0, 4)
+        .map((o, i) => {
+          const others = fixOthers(o.otherEffects as Record<string, EffectBundle> | undefined);
+          for (const id of Object.keys(others ?? {})) actors.add(id as SimId);
+          const followUps = (o.followUps ?? []).slice(0, 3).map((f) => ({ inDays: Math.round(Math.max(1, Math.min(60, f.inDays))), chance: Math.max(0.05, Math.min(1, f.chance)), text: f.text.trim().slice(0, 500), effects: fixBundle(f.effects as EffectBundle | undefined, false), otherEffects: fixOthers(f.otherEffects as Record<string, EffectBundle> | undefined) }));
+          return {
+            id: (o.id ?? `opt${i + 1}`).toLowerCase().replace(/[^a-z0-9_]+/g, '_').slice(0, 24) || `opt${i + 1}`,
+            label: o.label.trim().slice(0, 60),
+            hint: o.hint?.trim().slice(0, 80),
+            consequence: { narration: (o.narration ?? '').trim().slice(0, 600), effects: fixBundle(o.effects as EffectBundle | undefined, false), otherEffects: others, flags: (o.flags ?? []).map((f) => f.toLowerCase().replace(/[^a-z0-9_]+/g, '_').slice(0, 40)).filter(Boolean).slice(0, 2), followUps },
+          };
+        });
+      if (options.length < 2) throw new Error('dilemma: fewer than two options');
+      const ids = new Set(options.map((o) => o.id));
+      const dflt = raw.defaultOptionId && ids.has(raw.defaultOptionId.toLowerCase()) ? raw.defaultOptionId.toLowerCase() : options[options.length - 1].id;
+      return {
+        title: raw.title.trim().slice(0, 80),
+        body: raw.body.trim().slice(0, 700),
+        deadlineHours: Math.round(Math.max(4, Math.min(120, raw.deadlineHours))),
+        defaultOptionId: dflt,
+        options,
+        actors: [...actors],
+      };
+    } catch (err) {
+      this.failed('director', err);
+      return undefined;
     }
   }
 

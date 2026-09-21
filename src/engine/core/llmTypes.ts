@@ -72,6 +72,8 @@ export interface LLMService {
   describeVenue(state: WorldState, venue: Venue): Promise<string>;
   /** NPC-initiated outreach (text message / call content) */
   npcMessage(state: WorldState, from: Sim, to: Sim, reason: string): Promise<string>;
+  /** Write one dilemma grounded in this sim's life; undefined when the model can't (the caller falls back to a template). */
+  generateDilemma?(state: WorldState, sim: Sim, opts?: { theme?: string }): Promise<import('./types').GeneratedDilemma | undefined>;
   /** A realistic portrait photo (data URL) from an image-capable model; absent when no key is configured. */
   generatePortrait?(state: WorldState, sim: Sim): Promise<{ dataUrl: string; usage: LLMUsage }>;
   /** Weekly story direction (optional). */

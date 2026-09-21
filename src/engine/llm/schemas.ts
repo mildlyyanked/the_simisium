@@ -145,6 +145,26 @@ export const InteractionOutcomeWireSchema = z.object({
   minutes: z.number().optional(),
 });
 
+const FollowUpWire = z.object({ inDays: z.number(), chance: z.number(), text: z.string(), effects: EffectBundleSchema.optional(), otherEffects: z.record(z.string(), EffectBundleSchema).optional() });
+export const DilemmaWireSchema = z.object({
+  title: z.string(),
+  body: z.string(),
+  deadlineHours: z.number(),
+  defaultOptionId: z.string(),
+  options: z.array(
+    z.object({
+      id: z.string(),
+      label: z.string(),
+      hint: z.string().optional(),
+      narration: z.string(),
+      effects: EffectBundleSchema.optional(),
+      otherEffects: z.record(z.string(), EffectBundleSchema).optional(),
+      flags: z.array(z.string()).optional(),
+      followUps: z.array(FollowUpWire).optional(),
+    }),
+  ),
+});
+
 export const InteractionOutcomeSchema = z.object({
   narration: z.string().optional().catch(undefined),
   dialogue: looseArray(DialogueLineSchema),
@@ -158,6 +178,27 @@ export const InteractionOutcomeSchema = z.object({
   minutes: num.optional().catch(undefined),
 });
 export type InteractionOutcomeOut = z.infer<typeof InteractionOutcomeSchema>;
+
+const FollowUpLoose = z.object({ inDays: num.catch(7), chance: num.catch(1), text: z.string(), effects: LooseEffectBundleSchema.optional().catch(undefined), otherEffects: z.record(z.string(), LooseEffectBundleSchema.catch({})).optional().catch(undefined) });
+export const DilemmaSchema = z.object({
+  title: z.string(),
+  body: z.string(),
+  deadlineHours: num.catch(48),
+  defaultOptionId: z.string().optional().catch(undefined),
+  options: z.array(
+    z.object({
+      id: z.string().optional().catch(undefined),
+      label: z.string(),
+      hint: z.string().optional().catch(undefined),
+      narration: z.string().optional().catch(undefined),
+      effects: LooseEffectBundleSchema.optional().catch(undefined),
+      otherEffects: z.record(z.string(), LooseEffectBundleSchema.catch({})).optional().catch(undefined),
+      flags: looseArray(z.string()),
+      followUps: looseArray(FollowUpLoose),
+    }),
+  ),
+});
+export type DilemmaOut = z.infer<typeof DilemmaSchema>;
 
 // ---------------------------------------------------------------------------
 // Bio
