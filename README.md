@@ -75,7 +75,7 @@ Every LLM output is a typed JSON document (zod-validated) whose effects pass thr
 ## How the world is built
 
 1. You pick a city (search or presets). `buildRegion` derives cost of living, rent, taxes, minimum wage, climate and transit from a preset table or from coordinates.
-2. `SEARCH_PLAN` runs ~40 Places API text/nearby searches around the center (grocery, cafe, gym, hospital, DMV, school, bar, church, park…). Each result is mapped by its Google `types` to one of 102 venue archetypes, which decides the objects inside, staff roles, opening hours, price multiplier and venue-level actions.
+2. `SEARCH_PLAN` runs ~40 Places API text/nearby searches around the center (later, the Map tab's search looks up any other real place in the city on demand: one autocomplete per pause in typing, one details call per place you add) (grocery, cafe, gym, hospital, DMV, school, bar, church, park…). Each result is mapped by its Google `types` to one of 102 venue archetypes, which decides the objects inside, staff roles, opening hours, price multiplier and venue-level actions.
 3. Staff are generated as NPCs with careers, schedules and homes in nearby apartment buildings; 28 residents, a few couples, your family, friends, neighbors, boss and coworkers are generated with consistent relationships.
 4. Your home is furnished by residence type, pantry stocked, pets and vehicle added, and the first journal entry is written.
 

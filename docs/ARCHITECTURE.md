@@ -208,6 +208,10 @@ interface PlacesProvider {
 
 `gen/worldgen.ts` seeds a new game: pick region → fetch venues per archetype (nearest N) → create home lot → generate a population of NPCs attached to venues (staff), the neighborhood (neighbors), and institutions (teachers, doctors, police) → generate bios lazily on first meaningful contact.
 
+### 9a. Looking places up after generation
+
+The seeded world is a budgeted sample (the search plan, capped by `maxVenues`), so the Map tab's search reaches past it: three or more letters run a debounced `autocomplete` (cheap, cached) biased to the sim's position, minus places the world already has. Picking a suggestion fetches `details` once and calls `Engine.addPlace`, which builds the venue exactly like a seeded one (`addVenueFromPlace`: archetype from Google types, price/quality/safety, furnishing, a skeleton staff of two) and marks it discovered. `venueForPlace` keeps it idempotent. The app shares one `PlacesCache` persisted in AsyncStorage across generation and lookups, so a paid request is never repeated on the device.
+
 ## 8a. Conversation lifecycle
 
 An in-person conversation needs co-presence: every tick `pruneConversations` ends any whose participant left the venue (with a log line saying who left). NPC autonomy holds a sim who is mid-conversation with the player in place unless an obligation starts within 15 minutes, or the player has gone quiet for 45. Performing a non-conversational action while talking (an object, travel, the phone) goes through the store's `pendingConfirm` dialog; on confirm `engine.wrapUpConversation` gets the partner's parting line from the model (or a plain wrap-up offline), applies its effects, and only then runs the action. Text and phone conversations are unaffected by location.

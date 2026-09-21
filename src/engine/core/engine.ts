@@ -13,11 +13,12 @@ import { adjacentFree, ensureLayout, findPath, nearestWalkable, positionOf, room
 import { quickActions, resolveIntent, type QuickAction } from './intents';
 import { staffOpinion } from '../systems/social';
 import { installGeneratedDilemma, installTemplateDilemma } from '../systems/story';
+import { addVenueFromPlace } from '../gen/worldgen';
 import type { InteractionOutcome, LLMService, SceneSnapshot } from './llmTypes';
 import { makeQuery, simName } from './query';
 import { RNG } from './rng';
 import type { ActionResult, System, SystemContext, WorldQuery } from './systems';
-import type { ActionDef, Conversation, EffectBundle, Interrupt, LogEntry, ScheduledEvent, ScheduledEventSpec, Sim, SimId, VenueId, WorldState } from './types';
+import type { ActionDef, Conversation, EffectBundle, GooglePlaceData, Interrupt, LogEntry, ScheduledEvent, ScheduledEventSpec, Sim, SimId, Venue, VenueId, WorldState } from './types';
 import { clamp100, DAY, HOUR, round2 } from './util';
 
 export interface EngineOptions {
@@ -179,6 +180,22 @@ export class Engine {
   // Lifecycle
   // ---------------------------------------------------------------------
   /** Dilemma requests the story system posted for the model (the store drains these). */
+  /**
+   * Bring a real place the player looked up into the world: a discovered venue built from its
+   * Google data (or the one already built from it), furnished and staffed, ready to travel to.
+   */
+  addPlace(place: GooglePlaceData): Venue {
+    const before = Object.values(this.state.venues).find((v) => v.google?.placeId === place.placeId);
+    const venue = addVenueFromPlace(this.state, this.content, this.rng, place, { discovered: true });
+    if (!before) {
+      const sim = this.state.sims[this.state.player.activeSimId];
+      this.log({ text: `You look up ${venue.name}${place.formattedAddress ? ` (${place.formattedAddress.split(',')[0]})` : ''}.`, kind: 'system', simId: sim?.id, venueId: venue.id, importance: 0 });
+    }
+    this.actionsCache = null;
+    this.notify();
+    return venue;
+  }
+
   takeStoryRequests(): { simId: SimId; theme: string }[] {
     const out: { simId: SimId; theme: string }[] = [];
     for (const [k, v] of Object.entries(this.state.flags)) {
@@ -561,6 +578,11 @@ export class Engine {
   async wrapUpConversation(simId: SimId, conversationId: string, reason: string): Promise<void> {
     const conv = this.state.conversations[conversationId as import('./types').ConversationId];
     if (!conv || !conv.active) return;
+    // nothing was said yet: there is nothing to wrap up, so it simply closes
+    if (!conv.turns.length) {
+      this.endConversation(conversationId);
+      return;
+    }
     const others = conv.participantIds.filter((p) => p !== simId).map((p) => this.state.sims[p]).filter(Boolean);
     const names = others.map((o) => o.identity.firstName).join(' and ');
     if (this.llm && this.llm.isLive() && others.length) {

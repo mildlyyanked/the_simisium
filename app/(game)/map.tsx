@@ -1,13 +1,15 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, ScrollView, TextInput, View, useWindowDimensions } from 'react-native';
 import Svg, { Circle, G, Line, Text as SvgText } from 'react-native-svg';
 import { useGame } from '@/store/gameStore';
 import { useSettings } from '@/store/settings';
 import { useActions, useActiveSim, useEngine, useVenueOf } from '@/store/selectors';
 import type { Venue, VenueId } from '@engine/core/types';
+import type { PlacePrediction } from '@engine/places/types';
+import { archetypeForTypes } from '@engine/places/archetypes';
 import { haversineKm } from '@engine/core/util';
 import { standingLabel } from '@engine/systems/social';
-import { Screen, Text, Button, Chip, ChipRow, Sheet, VenueCard, SectionHeader, KeyValue, Icon, EmptyState, SimAvatar, Pill } from '@/ui/components';
+import { Screen, Text, Button, Card, Chip, ChipRow, Sheet, VenueCard, SectionHeader, KeyValue, Icon, EmptyState, SimAvatar, Pill } from '@/ui/components';
 import { ARCHETYPE_GROUP, ARCHETYPE_ICON, GROUP_ORDER, TRAVEL_ICON, TRAVEL_LABEL, type ArchetypeGroup } from '@/ui/icons';
 import { useTheme } from '@/ui/theme';
 import { duration, hoursByDay, km, openStatus, priceLevel } from '@/ui/format';
@@ -115,8 +117,14 @@ export default function MapScreen(): React.ReactElement {
   const actions = useActions();
   const perform = useGame((s) => s.perform);
   const toggleFavorite = useGame((s) => s.toggleFavorite);
+  const searchPlaces = useGame((s) => s.searchPlaces);
+  const addPlace = useGame((s) => s.addPlace);
+  const hasPlaces = useGame((s) => !!s.places);
   const mapKey = useSettings((st) => st.googlePlacesKey);
   const [query, setQuery] = useState('');
+  const [remote, setRemote] = useState<PlacePrediction[]>([]);
+  const [searching, setSearching] = useState(false);
+  const searchSeq = useRef(0);
   const [filter, setFilter] = useState<Filter>('all');
   const [group, setGroup] = useState<ArchetypeGroup | 'All'>('All');
   const [selected, setSelected] = useState<VenueId | null>(null);
@@ -136,6 +144,32 @@ export default function MapScreen(): React.ReactElement {
       .sort((a, b) => a.d - b.d);
     return list;
   }, [engine, here, query, filter, group, useGame.getState().version]);
+
+  // the whole city, not just what was seeded: a type-ahead over real places once three letters are in
+  useEffect(() => {
+    const q = query.trim();
+    const seq = ++searchSeq.current;
+    if (q.length < 3 || !hasPlaces) {
+      setRemote([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const timer = setTimeout(() => {
+      searchPlaces(q)
+        .then((preds) => {
+          if (seq !== searchSeq.current) return;
+          setRemote(preds.slice(0, 6));
+        })
+        .catch(() => {
+          if (seq === searchSeq.current) setRemote([]);
+        })
+        .finally(() => {
+          if (seq === searchSeq.current) setSearching(false);
+        });
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [query, hasPlaces, searchPlaces]);
 
   if (!engine || !sim || !here) {
     return (
@@ -183,10 +217,36 @@ export default function MapScreen(): React.ReactElement {
       </View>
       <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 40 }}>
         {showRadar && venues.length ? <Radar venues={venues.slice(0, 60)} center={here} hereId={here.id} selectedId={selected} onPick={setSelected} mapKey={mapKey || undefined} /> : null}
-        {venues.length === 0 ? <EmptyState icon="map-search-outline" title="Nothing here yet" body="Places appear on the map as you discover them. Type two letters to search everything in town." compact /> : null}
+        {venues.length === 0 && !remote.length && !searching ? <EmptyState icon="map-search-outline" title={query.trim().length >= 3 ? 'Nothing by that name' : 'Nothing here yet'} body={query.trim().length >= 3 ? 'No place nearby matches. Try the name the sign would show.' : 'Places appear on the map as you discover them. Type three letters to search the whole city.'} compact /> : null}
         {venues.slice(0, 80).map((v) => (
           <VenueCard key={v.id} venue={v} epoch={engine.state.epoch} minute={engine.state.time.minute} isOpen={engine.ctx().query.isVenueOpen(v.id)} distanceKm={v.d} favorite={engine.state.player.favorites.includes(v.id)} here={v.id === here.id} onPress={() => setSelected(v.id)} onFavorite={() => toggleFavorite(v.id)} style={{ marginBottom: 8 }} compact knownCount={Object.keys(sim.relationships).filter((id) => v.staffSimIds.includes(id as never) || v.regularSimIds.includes(id as never)).length} />
         ))}
+        {remote.length || searching ? (
+          <View style={{ marginTop: venues.length ? 10 : 0 }}>
+            <SectionHeader title="Elsewhere in the city" action={searching ? 'Searching…' : undefined} style={{ marginTop: 0 }} />
+            {remote.map((p) => {
+              const arch = archetypeForTypes(p.types);
+              return (
+                <Card
+                  key={p.placeId}
+                  icon={ARCHETYPE_ICON[arch === 'unknown' ? 'retail' : arch]}
+                  title={p.text}
+                  subtitle={[arch === 'unknown' ? undefined : arch.replace(/_/g, ' '), p.secondaryText].filter(Boolean).join(' · ')}
+                  right={<Icon name="map-marker-plus-outline" size={20} color={t.colors.accent} />}
+                  onPress={() => {
+                    void addPlace(p.placeId).then((id) => {
+                      if (!id) return;
+                      setRemote((list) => list.filter((x) => x.placeId !== p.placeId));
+                      setSelected(id);
+                    });
+                  }}
+                  style={{ marginBottom: 8 }}
+                  accessibilityLabel={`Look up ${p.text}`}
+                />
+              );
+            })}
+          </View>
+        ) : null}
       </ScrollView>
 
       <Sheet visible={!!sel} onClose={() => setSelected(null)} title={sel?.name} subtitle={sel ? `${sel.archetype.replace(/_/g, ' ')} · ${km(haversineKm(here.location, sel.location))} away` : undefined} headerRight={sel ? <Button title={isFav ? 'Saved' : 'Save'} size="sm" variant={isFav ? 'secondary' : 'ghost'} icon={isFav ? 'heart' : 'heart-outline'} onPress={() => toggleFavorite(sel.id)} /> : null}>

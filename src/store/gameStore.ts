@@ -8,7 +8,8 @@
 import { create } from 'zustand';
 import { Engine, type PerformResult } from '@engine/core/engine';
 import type { ActionAvailability } from '@engine/core/actions';
-import type { AvatarParams, Conversation, GeneratedDilemma, SimId, VenueId, WorldState } from '@engine/core/types';
+import type { AvatarParams, Conversation, GeneratedDilemma, GooglePlaceData, SimId, VenueId, WorldState } from '@engine/core/types';
+import type { PlacePrediction, PlacesProvider } from '@engine/places/types';
 import type { LLMUsage } from '@engine/core/llmTypes';
 import { deserialize, saveSummary, serialize } from '@engine/core/save';
 import { generateWorld } from '@engine/gen/worldgen';
@@ -85,6 +86,12 @@ export interface GameState {
   walkToSim(simId: SimId): void;
   toggleAutonomy(id: SimId): void;
   toggleFavorite(venueId: VenueId): void;
+  /** the places provider for the loaded world (Google when a key is set, otherwise the fixture city) */
+  places: PlacesProvider | null;
+  /** type-ahead over real places near the active sim; already-known venues are left out */
+  searchPlaces(input: string): Promise<PlacePrediction[]>;
+  /** look a suggestion up and bring it into the world as a discovered venue */
+  addPlace(placeId: string): Promise<VenueId | null>;
   pushToast(text: string, kind?: ToastItem['kind']): void;
   dismissToast(id: string): void;
 }
@@ -193,6 +200,7 @@ export const useGame = create<GameState>((set, get) => ({
   busyLabel: '',
   busySince: 0,
   pendingConfirm: null,
+  places: null,
   narrating: false,
   activeSimId: null,
   openConversationId: null,
@@ -251,7 +259,7 @@ export const useGame = create<GameState>((set, get) => ({
       const { engine, warnings } = buildEngine(state, { onUsage });
       for (const w of warnings) get().pushToast(w, 'warning');
       attachEngine(engine, set, get);
-      set({ engine, saveId: state.meta.saveId, activeSimId: state.player.activeSimId, openConversationId: null, followUps: [], recentActionIds: [], version: get().version + 1 });
+      set({ engine, places: placesRes.places, saveId: state.meta.saveId, activeSimId: state.player.activeSimId, openConversationId: null, followUps: [], recentActionIds: [], version: get().version + 1 });
       engine.init(true);
       await flushSave(get);
       await setLastSaveId(state.meta.saveId);
@@ -282,7 +290,9 @@ export const useGame = create<GameState>((set, get) => ({
       for (const w of warnings) get().pushToast(w, 'warning');
       attachEngine(engine, set, get);
       const openConv = Object.values(state.conversations).find((c) => c.active && c.participantIds.includes(state.player.activeSimId));
-      set({ engine, saveId: state.meta.saveId, activeSimId: state.player.activeSimId, openConversationId: openConv?.id ?? null, followUps: [], recentActionIds: [], version: get().version + 1 });
+      const placesRes = buildPlaces(state.region.center);
+      if (placesRes.warning) get().pushToast(placesRes.warning, 'warning');
+      set({ engine, places: placesRes.places ?? null, saveId: state.meta.saveId, activeSimId: state.player.activeSimId, openConversationId: openConv?.id ?? null, followUps: [], recentActionIds: [], version: get().version + 1 });
       engine.init(false);
       await setLastSaveId(saveId);
       set({ lastSaveId: saveId });
@@ -330,7 +340,7 @@ export const useGame = create<GameState>((set, get) => ({
       clearTimeout(saveTimer);
       saveTimer = null;
     }
-    set({ engine: null, saveId: null, activeSimId: null, openConversationId: null, followUps: [], busy: false, busyLabel: '', version: get().version + 1 });
+    set({ engine: null, places: null, saveId: null, activeSimId: null, openConversationId: null, followUps: [], busy: false, busyLabel: '', version: get().version + 1 });
   },
 
   rebuildEngine() {
@@ -343,7 +353,7 @@ export const useGame = create<GameState>((set, get) => ({
     const { engine, warnings } = buildEngine(old.state, { onUsage });
     for (const w of warnings) get().pushToast(w, 'warning');
     attachEngine(engine, set, get);
-    set({ engine, version: get().version + 1 });
+    set({ engine, places: buildPlaces(old.state.region.center).places ?? null, version: get().version + 1 });
   },
 
   getActions() {
@@ -364,7 +374,11 @@ export const useGame = create<GameState>((set, get) => ({
     const action = engine.findAction(simId, actionId);
     // doing something else while talking to someone ends the conversation, and that deserves a heads-up
     const open = get().openConversationId ? engine.state.conversations[get().openConversationId as Conversation['id']] : undefined;
-    if (!opts.force && open?.active && action && !actionFitsConversation(action, open)) {
+    if (!opts.force && open?.active && action && !actionFitsConversation(action, open) && !open.turns.length) {
+      // nothing has been said yet, so there is nothing to wrap up: it just closes
+      engine.endConversation(open.id);
+      set({ openConversationId: null, followUps: [] });
+    } else if (!opts.force && open?.active && action && !actionFitsConversation(action, open)) {
       const partner = open.participantIds.filter((p) => p !== simId).map((p) => engine.state.sims[p]?.identity.firstName ?? 'them').join(' and ');
       set({
         pendingConfirm: {
@@ -549,7 +563,7 @@ export const useGame = create<GameState>((set, get) => ({
     const { engine, openConversationId } = get();
     if (!engine || !openConversationId) return;
     const conv = engine.state.conversations[openConversationId as Conversation['id']];
-    if (conv?.active && opts.wrapUp) {
+    if (conv?.active && opts.wrapUp && conv.turns.length) {
       set({ busy: true, busyLabel: 'Wrapping up…', busySince: Date.now() });
       armBusyWatchdog(set, get);
       try {
@@ -567,6 +581,37 @@ export const useGame = create<GameState>((set, get) => ({
 
   cancelConfirm() {
     set({ pendingConfirm: null });
+  },
+
+  async searchPlaces(input) {
+    const { engine, places } = get();
+    const q = input.trim();
+    if (!engine || !places || q.length < 3) return [];
+    const sim = engine.state.sims[engine.state.player.activeSimId];
+    const here = sim ? engine.state.venues[sim.location.venueId] : undefined;
+    const known = new Set(Object.values(engine.state.venues).map((v) => v.google?.placeId).filter(Boolean));
+    const preds = await places.autocomplete(q, here?.location ?? engine.state.region.center);
+    return preds.filter((p) => !known.has(p.placeId) && !p.placeId.startsWith('city:') && !p.types.some((t) => t === 'locality' || t === 'political' || t === 'route' || t === 'street_address'));
+  },
+
+  async addPlace(placeId) {
+    const { engine, places } = get();
+    if (!engine || !places) return null;
+    set({ busy: true, busyLabel: 'Looking it up…', busySince: Date.now() });
+    armBusyWatchdog(set, get);
+    try {
+      const details: GooglePlaceData = await places.details(placeId);
+      const venue = engine.addPlace(details);
+      set({ version: get().version + 1 });
+      scheduleSave(get);
+      haptic.success();
+      return venue.id;
+    } catch (err) {
+      get().pushToast(`Could not look that place up: ${(err as Error).message}`, 'error');
+      return null;
+    } finally {
+      set({ busy: false, busyLabel: '' });
+    }
   },
 
   resolveInterrupt(id, optionActionId, params) {

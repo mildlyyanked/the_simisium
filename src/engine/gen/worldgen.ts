@@ -123,6 +123,48 @@ const HOBBY_OBJECTS: Record<string, string> = { guitar: 'guitar', piano: 'keyboa
 
 const STARTER_PANTRY: [string, number][] = [['eggs', 1], ['milk', 1], ['bread', 1], ['rice', 1], ['pasta', 2], ['chicken', 1], ['vegetables', 2], ['fruit', 2], ['cheese', 1], ['butter', 1], ['coffee_beans', 1], ['cereal', 1], ['snacks', 2], ['water_bottle', 4], ['toilet_paper', 4], ['soap', 1], ['toothpaste', 1], ['shampoo', 1], ['dish_soap', 1], ['laundry_detergent', 1], ['trash_bags', 1], ['painkillers', 1]];
 
+/** The venue already built from this Google place, if any. */
+export function venueForPlace(state: WorldState, placeId: string): Venue | undefined {
+  return Object.values(state.venues).find((v) => v.google?.placeId === placeId);
+}
+
+/**
+ * Add one real place to a running world (a search result the player looked up): built the same way
+ * the seeded venues are, furnished from its archetype, with a skeleton staff so it is not empty.
+ */
+export function addVenueFromPlace(state: WorldState, content: ContentCatalog, rng: RNG, place: GooglePlaceData, opts: { discovered?: boolean; staff?: number } = {}): Venue {
+  const existing = venueForPlace(state, place.placeId);
+  if (existing) {
+    if (opts.discovered) existing.discovered = true;
+    return existing;
+  }
+  const region = state.region;
+  const arch0 = archetypeForTypes(place.types, place.primaryType);
+  const archetype: VenueArchetype = arch0 === 'unknown' ? 'retail' : arch0;
+  const pl = place.priceLevel ?? 2;
+  const venue = makeVenue({
+    id: newVenueId(rng),
+    name: place.displayName,
+    archetype,
+    location: place.location,
+    google: place,
+    rng,
+    priceMultiplier: round2(PRICE_LEVEL_MULT[clamp(pl, 0, 4)] * region.costOfLiving),
+    capacity: content.archetypes[archetype]?.capacity ?? 40,
+    rooms: content.archetypes[archetype]?.rooms ?? ['Main floor'],
+    tags: [...(content.archetypes[archetype]?.tags ?? []), 'looked_up'],
+    discovered: opts.discovered ?? true,
+  });
+  venue.safety = clamp(Math.round((content.archetypes[archetype]?.safety ?? 75) - region.crimeIndex * 20 + rng.int(-8, 8)), 10, 99);
+  venue.quality = clamp(place.rating ? place.rating / 5 : 0.6, 0.2, 1);
+  venue.cleanliness = clamp(Math.round(55 + venue.quality * 40 + rng.int(-10, 10)), 20, 100);
+  state.venues[venue.id] = venue;
+  state.placesCache[place.placeId] = place;
+  furnish(state, content, rng, venue);
+  hireStaff({ state, rng, content }, venue, opts.staff ?? 2);
+  return venue;
+}
+
 // ---------------------------------------------------------------------------
 export async function generateWorld(opts: NewGameOptions): Promise<WorldState> {
   const content = opts.content ?? CONTENT;

@@ -41,6 +41,7 @@ describe('conversations', () => {
     const other2 = q.simsAt(venue.id).find((s) => s.id !== me) ?? other;
     engine.teleport(other2.id, venue.id);
     const conv2 = engine.startConversation(me, [other2.id], 'in_person');
+    conv2.turns.push({ speakerId: me, text: 'Hey, how has your day been?', at: engine.now });
     const before = state.sims[me].relationships[other2.id]?.familiarity ?? 0;
     await engine.wrapUpConversation(me, conv2.id, 'Order a coffee');
     expect(conv2.active).toBe(false);
