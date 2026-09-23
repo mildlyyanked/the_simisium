@@ -10,6 +10,8 @@ import { ARCHETYPE_ICON } from '@/ui/icons';
 import { useTheme } from '@/ui/theme';
 import { openStatus } from '@/ui/format';
 import { haptic } from '@/ui/haptics';
+import { CONTENT } from '@engine/content';
+import { crowdAt } from '@engine/systems/crowd';
 
 function countdown(minutes: number): string {
   if (minutes < 60) return `${Math.max(1, Math.round(minutes))} min`;
@@ -120,7 +122,10 @@ export default function LiveScreen(): React.ReactElement {
                 {sim.travel ? `On the way to ${engine.state.venues[sim.travel.toVenueId]?.name ?? 'somewhere'}` : `${venue.name}${roomName ? ` · ${roomName}` : ''}`}
               </Text>
               {venue.archetype !== 'home' ? <Pill label={status.label} color={status.open ? t.colors.success : t.colors.danger} size="xs" /> : null}
-              {here.length ? <Pill label={`${here.length} here`} size="xs" /> : null}
+              {(() => {
+                const crowd = sim.travel ? null : crowdAt(engine.state, CONTENT, venue.id);
+                return crowd && crowd.count > here.length ? <Pill label={`${crowd.label} · ~${crowd.count}`} size="xs" /> : here.length ? <Pill label={`${here.length} here`} size="xs" /> : null;
+              })()}
             </View>
           </View>
           {controlled.length > 1 ? (

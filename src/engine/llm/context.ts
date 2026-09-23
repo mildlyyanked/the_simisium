@@ -12,6 +12,7 @@ import type { BioFact, Conversation, Relationship, Sim, SimId, Venue, VenueId, W
 import { positionOf } from '../space/nav';
 import { activeNews } from '../systems/story';
 import { standingLabel } from '../systems/social';
+import { crowdAt } from '../systems/crowd';
 import { haversineKm, kmToMiles } from '../core/util';
 import { recentMemories, relevantMemories } from './memory';
 
@@ -200,7 +201,8 @@ export function buildSceneContext(scene: SceneSnapshot, opts: BuildContextOption
     .map((v) => ({ id: v.id, name: v.name, archetype: v.archetype, miles: Math.round(kmToMiles(haversineKm(venue.location, v.location)) * 10) / 10 }))
     .sort((a, b) => a.miles - b.miles || a.name.localeCompare(b.name))
     .slice(0, 12);
-  const crowdLevel = arch?.crowdByHour?.[clock.hour];
+  const crowd = crowdAt(state, content, venue.id, now);
+  const present = query.simsAt(venue.id).length;
   const venueCtx: VenueContext = {
     id: venue.id,
     name: venue.name,
@@ -215,7 +217,7 @@ export function buildSceneContext(scene: SceneSnapshot, opts: BuildContextOption
     reviewThemes: (g?.reviewThemes ?? []).slice(0, 6),
     ambience: arch?.llmHint,
     objects: objectNames,
-    crowd: crowdLabel(crowdLevel, venue.noise),
+    crowd: crowd.count > present ? `${crowd.label} (about ${crowd.count} people here; the ${present - 1 > 0 ? `${present - 1} named below are` : 'named people are'} the ones the player can pick out)` : crowdLabel(undefined, venue.noise),
     cleanliness: Math.round(venue.cleanliness),
     safety: Math.round(venue.safety),
     isHome,

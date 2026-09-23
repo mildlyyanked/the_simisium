@@ -78,6 +78,8 @@ export interface GameState {
   waitUntilMorning(): void;
   skipToNextEvent(): void;
   startConversation(targetId: SimId, channel?: Conversation['channel']): string | null;
+  /** pick someone out of the crowd where the active sim stands and start talking */
+  meetStranger(at?: { x: number; y: number }): string | null;
   endConversation(opts?: { wrapUp?: boolean; reason?: string }): Promise<void>;
   /** an action that would end the open conversation is waiting for the player's OK */
   pendingConfirm: { title: string; body: string; confirmLabel: string; run: () => void } | null;
@@ -568,6 +570,16 @@ export const useGame = create<GameState>((set, get) => ({
     }
     const minutes = Math.min(next.atMinute - now, 1440);
     get().wait(Math.max(1, minutes));
+  },
+
+  meetStranger(at) {
+    const { engine, busy } = get();
+    if (!engine || busy) return null;
+    const npc = engine.meetStranger(engine.state.player.activeSimId, at);
+    if (!npc) return null;
+    haptic.select();
+    scheduleSave(get);
+    return get().startConversation(npc.id, 'in_person');
   },
 
   startConversation(targetId, channel = 'in_person') {

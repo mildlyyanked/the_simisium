@@ -16,9 +16,12 @@ export interface PlaceMapProps {
   sims: { sim: Sim; pos: Tile; isPlayer: boolean; controlled: boolean }[];
   /** tile the player is walking to, drawn as a target */
   target?: Tile | null;
+  /** the anonymous crowd: figures with no name until the player picks one out */
+  extras?: (Tile & { seed: number })[];
   onTapTile?: (tile: Tile) => void;
   onTapObject?: (id: ObjectId) => void;
   onTapSim?: (id: SimId) => void;
+  onTapExtra?: (tile: Tile) => void;
   /** available width in px */
   width: number;
   maxHeight?: number;
@@ -41,7 +44,9 @@ function roomFill(name: string, index: number): string {
   return palette[index % palette.length];
 }
 
-export function PlaceMap({ layout, objects, sims, target, onTapTile, onTapObject, onTapSim, width, maxHeight = 520 }: PlaceMapProps): React.ReactElement {
+const EXTRA_TONES = ['#6B7A90', '#7A6B90', '#907A6B', '#6B9080', '#8A8A6B', '#6B7F90'];
+
+export function PlaceMap({ layout, objects, sims, target, extras = [], onTapTile, onTapObject, onTapSim, onTapExtra, width, maxHeight = 520 }: PlaceMapProps): React.ReactElement {
   const t = useTheme();
   const tile = Math.max(16, Math.min(36, Math.floor((width - 8) / layout.width)));
   const W = layout.width * tile;
@@ -102,6 +107,20 @@ export function PlaceMap({ layout, objects, sims, target, onTapTile, onTapObject
           </RNText>
         </Pressable>
       ))}
+      {extras.map((e) => {
+        const size = Math.round(tile * 0.62);
+        const dx = ((e.seed % 7) - 3) * (tile * 0.05);
+        const dy = (((e.seed >> 3) % 7) - 3) * (tile * 0.05);
+        return (
+          <Pressable
+            key={`x${e.x},${e.y}`}
+            onPress={() => onTapExtra?.({ x: e.x, y: e.y })}
+            accessibilityRole="button"
+            accessibilityLabel="Someone in the crowd"
+            style={{ position: 'absolute', left: e.x * tile + (tile - size) / 2 + dx, top: e.y * tile + (tile - size) / 2 + dy, width: size, height: size, borderRadius: size / 2, backgroundColor: EXTRA_TONES[e.seed % EXTRA_TONES.length], opacity: 0.8, borderWidth: 1, borderColor: 'rgba(11,14,20,0.6)', zIndex: 1 }}
+          />
+        );
+      })}
       {sims.map(({ sim, pos, isPlayer, controlled }) => {
         const key = `${pos.x},${pos.y}`;
         const n = stacks.get(key) ?? 0;

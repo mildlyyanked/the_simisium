@@ -74,18 +74,19 @@ function hireStaff(ctx: GenCtx, venue: Venue, cap: number): Sim[] {
   const arch = ctx.content.archetypes[venue.archetype];
   const out: Sim[] = [];
   const roles = arch?.staff?.length ? arch.staff : venue.archetype === 'home' || venue.archetype === 'apartment_building' ? [] : [{ role: 'staff', careerId: 'retail_associate', count: 1 }];
+  const remaining = roles.filter((r) => ctx.content.careers[r.careerId]).map((r) => ({ ...r, left: Math.min(r.count, 3) }));
   let budget = cap;
-  for (const s of roles) {
-    const n = Math.min(s.count, budget, 3);
-    for (let i = 0; i < n; i++) {
-      if (!ctx.content.careers[s.careerId]) continue;
-      const npc = generateNpc(ctx, { role: s.role, careerId: s.careerId, venueId: venue.id, employerVenueId: venue.id, ageRange: [19, 62], lod: 'far' });
+  // one of each role before a second of any: a two-person club gets a bartender and a bouncer, not two barbacks
+  while (budget > 0 && remaining.some((r) => r.left > 0)) {
+    for (const r of remaining) {
+      if (budget <= 0 || r.left <= 0) continue;
+      const npc = generateNpc(ctx, { role: r.role, careerId: r.careerId, venueId: venue.id, employerVenueId: venue.id, ageRange: [19, 62], lod: 'far' });
       ctx.state.sims[npc.id] = npc;
-      venue.staffSimIds.push(npc.id);
+      if (!venue.staffSimIds.includes(npc.id)) venue.staffSimIds.push(npc.id);
       out.push(npc);
+      r.left--;
       budget--;
     }
-    if (budget <= 0) break;
   }
   return out;
 }

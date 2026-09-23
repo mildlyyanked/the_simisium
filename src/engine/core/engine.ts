@@ -14,6 +14,8 @@ import { quickActions, resolveIntent, type QuickAction } from './intents';
 import { staffOpinion } from '../systems/social';
 import { installGeneratedDilemma, installTemplateDilemma } from '../systems/story';
 import { addVenueFromPlace } from '../gen/worldgen';
+import { generateNpc } from '../gen/simgen';
+import { strangerAgeRange } from '../systems/crowd';
 import { generateBioFallback } from '../llm/bioFallback';
 import type { InteractionOutcome, LLMService, PartialReply, SceneSnapshot } from './llmTypes';
 import { makeQuery, simName } from './query';
@@ -196,6 +198,58 @@ export class Engine {
     this.actionsCache = null;
     this.notify();
     return venue;
+  }
+
+  /**
+   * Pick one person out of the crowd: a new sim who fits this kind of place, standing where the
+   * player looked, with a first flicker of familiarity. They live in the city from now on (a home
+   * building, usually a job); the oldest strangers nobody kept in touch with are let go past a cap.
+   */
+  meetStranger(simId: SimId, at?: { x: number; y: number }): Sim | undefined {
+    const sim = this.state.sims[simId];
+    const venue = sim ? this.state.venues[sim.location.venueId] : undefined;
+    if (!sim || !venue || sim.travel || venue.archetype === 'home') return undefined;
+    this.pruneStrangers(80, 60);
+    const arch = this.content.archetypes[venue.archetype];
+    const ctx = { state: this.state, rng: this.rng, content: this.content };
+    const buildings = Object.values(this.state.venues).filter((v) => v.archetype === 'apartment_building');
+    const home = buildings.length ? this.rng.pick(buildings) : undefined;
+    const careers = Object.values(this.content.careers).filter((c) => c.sector !== 'criminal');
+    const [lo, hi] = strangerAgeRange(venue.archetype, arch);
+    const npc = generateNpc(ctx, { venueId: venue.id, homeVenueId: home?.id, careerId: this.rng.chance(0.75) && careers.length ? this.rng.pick(careers).id : undefined, ageRange: [lo, hi], lod: 'far' });
+    npc.flags.transient = true;
+    npc.flags.metAt = venue.id;
+    npc.location = { venueId: venue.id, arrivedAt: this.now, pos: at ? { x: at.x, y: at.y } : undefined };
+    npc.currentAction = { actionId: 'npc:idle', label: arch?.tags?.includes('nightlife') ? 'out for the night' : 'hanging around', startedAt: this.now, endsAt: this.now + this.rng.int(45, 120), interruptible: true };
+    this.state.sims[npc.id] = npc;
+    if (home) home.regularSimIds.push(npc.id);
+    this.applyEffects(simId, { relationships: [{ simId: npc.id, familiarity: 1, mutual: true }] }, 'stranger');
+    const a = npc.identity.appearance;
+    const desc = `${a.build} ${npc.identity.gender === 'female' ? 'woman' : npc.identity.gender === 'male' ? 'man' : 'person'} with ${a.hair} hair, ${a.style} style`;
+    this.log({ text: `You pick out a ${desc} in the crowd at ${venue.name}.`, kind: 'narrative', simId, venueId: venue.id, importance: 1, meta: { noticedSimId: npc.id } });
+    this.bus.emit({ type: 'sim:met', simId, otherId: npc.id, venueId: venue.id });
+    this.actionsCache = null;
+    this.notify();
+    return npc;
+  }
+
+  /** Strangers nobody kept in touch with do not pile up forever. */
+  private pruneStrangers(cap: number, keep: number): void {
+    const transient = Object.values(this.state.sims).filter((s) => s.flags.transient === true);
+    if (transient.length < cap) return;
+    const controlled = this.state.player.controlledSimIds;
+    const busy = new Set(Object.values(this.state.conversations).filter((c) => c.active).flatMap((c) => c.participantIds));
+    const candidates = transient
+      .filter((s) => !busy.has(s.id) && !controlled.some((c) => (this.state.sims[c]?.relationships[s.id]?.familiarity ?? 0) >= 5 || this.state.sims[c]?.location.venueId === s.location.venueId))
+      .sort((x, y) => x.createdAt - y.createdAt);
+    for (const s of candidates.slice(0, Math.max(0, transient.length - keep))) {
+      delete this.state.sims[s.id];
+      for (const other of Object.values(this.state.sims)) delete other.relationships[s.id];
+      for (const v of Object.values(this.state.venues)) {
+        v.regularSimIds = v.regularSimIds.filter((id) => id !== s.id);
+        v.staffSimIds = v.staffSimIds.filter((id) => id !== s.id);
+      }
+    }
   }
 
   takeStoryRequests(): { simId: SimId; theme: string }[] {

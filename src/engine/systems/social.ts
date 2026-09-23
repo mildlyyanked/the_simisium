@@ -290,10 +290,13 @@ export const socialSystem: System = {
         const sim = ctx.query.simMaybe(e.simId);
         const venue = e.venueId ? state.venues[e.venueId] : undefined;
         if (!sim || !venue || !ctx.query.isControlled(sim.id) || !e.witnessed) return;
+        const prior = standingOf(venue, sim.id)?.score ?? 0;
         const st = bump(ctx, venue, sim, -30, 'caused trouble');
-        if (st.score <= -25 && venue.archetype !== 'home') {
-          st.bannedUntil = state.time.minute + 30 * DAY;
-          ctx.log({ text: `${venue.name} tells you not to come back. Thirty days, at least.`, kind: 'alert', simId: sim.id, venueId: venue.id, importance: 3 });
+        if (venue.archetype !== 'home') {
+          // getting caught bars you whoever you are; a valued regular gets a shorter one
+          const days = prior >= 20 ? 14 : 30;
+          st.bannedUntil = state.time.minute + days * DAY;
+          ctx.log({ text: `${venue.name} tells you not to come back.${days === 14 ? ' Two weeks, and only because they know you.' : ' Thirty days, at least.'}`, kind: 'alert', simId: sim.id, venueId: venue.id, importance: 3 });
         }
         return;
       }

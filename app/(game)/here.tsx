@@ -6,6 +6,7 @@ import { useActions, useActiveSim, useEngine, useVenueOf } from '@/store/selecto
 import type { ObjectId, SimId } from '@engine/core/types';
 import { positionOf, roomAt, objectAt } from '@engine/space/nav';
 import { CONTENT } from '@engine/content';
+import { crowdAt, extrasAt, whereLabel } from '@engine/systems/crowd';
 import { Screen, Text, Card, Chip, ChipRow, EmptyState, PlaceMap, ActionSheet, Icon, IconButton } from '@/ui/components';
 import { ARCHETYPE_ICON } from '@/ui/icons';
 import { useTheme } from '@/ui/theme';
@@ -24,6 +25,7 @@ export default function HereScreen(): React.ReactElement {
   const moveTo = useGame((s) => s.moveTo);
   const walkToObject = useGame((s) => s.walkToObject);
   const startConversation = useGame((s) => s.startConversation);
+  const meetStranger = useGame((s) => s.meetStranger);
   const perform = useGame((s) => s.perform);
   const [objectSheet, setObjectSheet] = useState<ObjectId | null>(null);
   const [help, setHelp] = useState(true);
@@ -47,8 +49,10 @@ export default function HereScreen(): React.ReactElement {
       .map((s) => ({ sim: s, pos: positionOf(state, layout, s), isPlayer: s.id === sim.id, controlled: controlled.has(s.id) }));
     const me = people.find((p) => p.isPlayer)?.pos ?? positionOf(state, layout, sim);
     const room = layout.rooms.find((r) => r.id === me.roomId);
-    const byRoom = layout.rooms.map((r) => ({ room: r, people: people.filter((p) => !p.isPlayer && p.pos.roomId === r.id), objects: objects.filter((o) => roomAt(layout, o.pos.x, o.pos.y)?.id === r.id) }));
-    return { layout, objects, people, me, room, byRoom };
+    const crowd = crowdAt(state, CONTENT, venue.id);
+    const extras = extrasAt(layout, crowd, people.map((p) => p.pos), state.time.minute);
+    const byRoom = layout.rooms.map((r) => ({ room: r, people: people.filter((p) => !p.isPlayer && p.pos.roomId === r.id), extras: extras.filter((e) => e.roomId === r.id).length, objects: objects.filter((o) => roomAt(layout, o.pos.x, o.pos.y)?.id === r.id) }));
+    return { layout, objects, people, me, room, byRoom, crowd, extras };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine, sim, venue, version]);
 
@@ -59,8 +63,9 @@ export default function HereScreen(): React.ReactElement {
       </Screen>
     );
   }
-  const { layout, objects, people, me, room, byRoom } = model;
+  const { layout, objects, people, me, room, byRoom, crowd, extras } = model;
   const presentIds = new Set(people.map((p) => p.sim.id));
+  const seen = new Set<SimId>();
   const staffAndRegulars = [
     ...venue.staffSimIds
       .map((id) => engine.state.sims[id])
@@ -77,7 +82,9 @@ export default function HereScreen(): React.ReactElement {
       .filter((s) => s && s.body.alive && (sim.relationships[s.id]?.familiarity ?? 0) > 0)
       .slice(0, 6)
       .map((s) => ({ sim: s, note: `regular${presentIds.has(s.id) ? ' · here now' : ''}` })),
-  ].slice(0, 10);
+  ]
+    .filter((p) => (seen.has(p.sim.id) ? false : (seen.add(p.sim.id), true)))
+    .slice(0, 10);
   const here = people.filter((p) => !p.isPlayer);
   const objectActions = objectSheet ? actions.filter((a) => a.action.target?.kind === 'object' && a.action.target.id === objectSheet) : [];
   const sheetObject = objectSheet ? objects.find((o) => o.obj.id === objectSheet) : undefined;
@@ -94,7 +101,16 @@ export default function HereScreen(): React.ReactElement {
       onTapSim(who.sim.id);
       return;
     }
+    if (extras.some((e) => e.x === tile.x && e.y === tile.y)) {
+      onTapExtra(tile);
+      return;
+    }
     moveTo(tile.x, tile.y);
+  };
+  const onTapExtra = (tile: { x: number; y: number }) => {
+    if (busy) return;
+    const cid = meetStranger(tile);
+    if (cid) router.push('/(game)/live');
   };
   const onTapSim = (id: SimId) => {
     if (id === sim.id || busy) return;
@@ -115,18 +131,18 @@ export default function HereScreen(): React.ReactElement {
               {venue.name}
             </Text>
             <Text variant="caption" muted numberOfLines={1}>
-              {room ? `You are in the ${room.name.toLowerCase()}` : 'Somewhere inside'} · {here.length ? `${here.length} ${here.length === 1 ? 'person' : 'people'} here` : 'nobody else here'}
+              {room ? `You're ${whereLabel(room)}` : 'Somewhere inside'} · {crowd.count > here.length ? `${crowd.label}, about ${crowd.count} people` : here.length ? `${here.length} ${here.length === 1 ? 'person' : 'people'} here` : 'nobody else here'}
             </Text>
           </View>
           <IconButton icon={help ? 'help-circle' : 'help-circle-outline'} accessibilityLabel="Toggle help" onPress={() => setHelp((v) => !v)} />
         </View>
         {help ? (
           <Text variant="caption" faint>
-            Tap a floor tile to walk there. Tap a thing to use it. Tap a person to talk. Walking across the building takes a minute or two.
+            Tap a floor tile to walk there. Tap a thing to use it. Tap a person to talk. The small grey figures are the crowd: tap one to pick someone out. Walking across the building takes a minute or two.
           </Text>
         ) : null}
         <View style={{ borderRadius: 14, overflow: 'hidden', backgroundColor: t.colors.background, borderWidth: 1, borderColor: t.colors.border, paddingVertical: 4 }}>
-          <PlaceMap layout={layout} objects={objects} sims={people} width={width - 26} onTapTile={onTapTile} onTapObject={(id) => setObjectSheet(id)} onTapSim={onTapSim} />
+          <PlaceMap layout={layout} objects={objects} sims={people} extras={extras} width={width - 26} onTapTile={onTapTile} onTapObject={(id) => setObjectSheet(id)} onTapSim={onTapSim} onTapExtra={onTapExtra} />
         </View>
         <ChipRow>
           {layout.rooms.map((r) => {
@@ -155,8 +171,8 @@ export default function HereScreen(): React.ReactElement {
             ))}
           </Card>
         ) : null}
-        {byRoom.map(({ room: r, people: ppl, objects: objs }) => (
-          <Card key={r.id} title={r.name} icon={me.roomId === r.id ? 'map-marker-account' : undefined}>
+        {byRoom.map(({ room: r, people: ppl, extras: n, objects: objs }) => (
+          <Card key={r.id} title={r.name} subtitle={n ? `${ppl.length ? 'and ' : ''}${n >= 8 ? 'full of people' : n === 1 ? 'someone' : 'a few people'} you don't know` : undefined} icon={me.roomId === r.id ? 'map-marker-account' : undefined}>
             {ppl.length ? (
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: objs.length ? 8 : 0 }}>
                 {ppl.map((p) => (

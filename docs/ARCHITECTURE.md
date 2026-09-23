@@ -251,6 +251,10 @@ Movement: `engine.moveTo / walkToObject / walkToSim` BFS over walkable tiles; wa
 
 UI: the **Here** tab renders the plan (`PlaceMap`): tap a tile to walk, an object to open its actions, a person to talk.
 
+## 9c. Crowds (`src/engine/systems/crowd.ts`)
+
+Real sims are a few dozen per venue at most, so a place's fullness is a separate, derived number. `crowdAt` turns the archetype's `crowdByHour` curve into a headcount: interpolated by minute, scaled by weekday for nightlife/food/shops, cut by wet weather outdoors and by being closed, jittered per venue and day, never below the real sims present. `extrasAt` puts that many anonymous figures on the floor plan (seeded per venue and half hour so they shuffle slowly, mostly out of back rooms, never on objects or real people). The Here and Live headers say "packed, about 180 people"; the model's venue context carries the same count so narration matches. Tapping a figure calls `Engine.meetStranger`: a new sim who fits the place (`strangerAgeRange`), standing on that tile, with a home building and usually a job, flagged `transient`, and a first point of familiarity both ways; past 80 such strangers the oldest that nobody kept in touch with are removed. `hireStaff` fills one of each role before doubling up and never registers a sim twice.
+
 ## 10. Save/Load
 
 `core/save.ts` serializes `WorldState` to JSON (version-stamped; migrations in `core/migrations.ts`). Store layer writes to AsyncStorage/FileSystem. Auto-save after every action.
