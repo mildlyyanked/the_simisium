@@ -31,6 +31,7 @@ Web build of the app at phone size (offline fallback, Austin fixtures):
 - **Engine**: pure TypeScript under `src/engine` (no React imports), so it runs headless in Node for tests and balance runs.
 - **LLM**: [OpenRouter](https://openrouter.ai) via its chat-completions API with JSON-schema structured output. Works offline with a deterministic fallback.
 - **Places**: Google Places API (New), Geocoding, and Routes APIs. Works offline with a bundled mock city (Austin, TX).
+- **Latency**: conversation turns stream in as they are written, route to the fastest provider, skip model reasoning, and give up on a stalled request after 30 s instead of minutes (the offline narrator answers instead).
 
 See `docs/ARCHITECTURE.md` for the design contract, `docs/IDS.md` for canonical ids, and `docs/BUILDER_GUIDE.md` for module rules.
 

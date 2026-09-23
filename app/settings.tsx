@@ -111,6 +111,7 @@ export default function SettingsScreen(): React.ReactElement {
   const saves = useGame((g) => g.saves);
   const deleteSave = useGame((g) => g.deleteSave);
   const llmUsage = useGame((g) => g.llmUsage);
+  const lastLlm = useGame((g) => g.lastLlm);
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [overrideTask, setOverrideTask] = useState<LLMTask | null>(null);
   const [imagePicker, setImagePicker] = useState(false);
@@ -185,7 +186,8 @@ export default function SettingsScreen(): React.ReactElement {
             <Chip key={v} label={`$${v}`} selected={s.budgetUsd === v} onPress={() => void s.update({ budgetUsd: v })} />
           ))}
         </ChipRow>
-        <KeyValue label="This session" value={`${llmUsage.calls} calls · $${llmUsage.costUsd.toFixed(3)} · ${(llmUsage.tokens / 1000).toFixed(1)}k tokens`} last />
+        <KeyValue label="This session" value={`${llmUsage.calls} calls · $${llmUsage.costUsd.toFixed(3)} · ${(llmUsage.tokens / 1000).toFixed(1)}k tokens`} last={!lastLlm} />
+        {lastLlm ? <KeyValue label="Last call" value={`${lastLlm.task} · ${(lastLlm.ms / 1000).toFixed(1)} s · ${lastLlm.model.split('/').pop()}${lastLlm.streamed ? ' · streamed' : ''}${lastLlm.ok ? '' : ` · failed: ${(lastLlm.error ?? '').slice(0, 60)}`}`} last /> : null}
       </Card>
 
       <SectionHeader title="Reading" />

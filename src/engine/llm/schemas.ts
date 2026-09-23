@@ -133,8 +133,8 @@ const LooseEffectBundleSchema = z.object({
 
 /** Strict shape sent to the API as response_format (models follow a clean schema better). */
 export const InteractionOutcomeWireSchema = z.object({
-  narration: z.string().optional(),
   dialogue: z.array(z.object({ speakerId: z.string(), text: z.string(), emotion: z.string().optional() })).optional(),
+  narration: z.string().optional(),
   effects: EffectBundleSchema.optional(),
   otherEffects: z.record(z.string(), EffectBundleSchema).optional(),
   revealedFacts: z.array(z.object({ simId: z.string(), factIds: z.array(z.string()) })).optional(),
@@ -436,4 +436,50 @@ export function normalizeOutcomeShape(raw: unknown): unknown {
   if (o.otherEffects && (typeof o.otherEffects !== 'object' || Array.isArray(o.otherEffects))) delete o.otherEffects;
   if (typeof o.followUps === 'string') o.followUps = [o.followUps];
   return o;
+}
+
+/** Decode the JSON string escapes that can appear inside a half-written string literal. */
+function unescapePartial(s: string): string {
+  return s.replace(/\\(u[0-9a-fA-F]{4}|[nrt"\\/])/g, (_, c: string) => {
+    if (c[0] === 'u') return String.fromCharCode(parseInt(c.slice(1), 16));
+    return c === 'n' ? '\n' : c === 'r' ? '\r' : c === 't' ? '\t' : c;
+  }).replace(/\\(u[0-9a-fA-F]{0,3})?$/, '');
+}
+
+/** The value of `"key": "` starting at `from`, as far as it has been written; undefined when the key isn't there yet. */
+function partialString(raw: string, key: string, from = 0): { text: string; at: number } | undefined {
+  const re = new RegExp(`"${key}"\\s*:\\s*"`, 'g');
+  re.lastIndex = from;
+  const m = re.exec(raw);
+  if (!m) return undefined;
+  const start = m.index + m[0].length;
+  let i = start;
+  while (i < raw.length) {
+    const ch = raw[i];
+    if (ch === '\\') {
+      i += 2;
+      continue;
+    }
+    if (ch === '"') break;
+    i++;
+  }
+  return { text: unescapePartial(raw.slice(start, Math.min(i, raw.length))), at: m.index };
+}
+
+/**
+ * What to show while an outcome streams in: the first dialogue line as it grows (with its speaker
+ * when that came first), else the narration. Works on the half-written JSON text.
+ */
+export function partialReply(raw: string): { kind: 'dialogue' | 'narration'; speakerId?: string; text: string } | undefined {
+  const d = raw.indexOf('"dialogue"');
+  if (d >= 0) {
+    const line = partialString(raw, 'text', d);
+    if (line && line.text) {
+      const sp = /"speakerId"\s*:\s*"([^"]*)"/.exec(raw.slice(d, line.at));
+      return { kind: 'dialogue', speakerId: sp?.[1] || undefined, text: line.text };
+    }
+  }
+  const n = partialString(raw, 'narration');
+  if (n && n.text && (d < 0 || n.at < d)) return { kind: 'narration', text: n.text };
+  return undefined;
 }

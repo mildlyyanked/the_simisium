@@ -5,12 +5,14 @@
  */
 import { Engine } from '@engine/core/engine';
 import type { LLMService, LLMUsage } from '@engine/core/llmTypes';
+import type { LLMResponseInfo } from '@engine/llm';
 import type { WorldState } from '@engine/core/types';
 import type { HolidayResolver } from '@engine/core/clock';
 import { CONTENT } from '@engine/content';
 import { SYSTEMS } from '@engine/systems';
 import { holidayResolver } from '@engine/systems/calendar';
 import { createLLMService } from '@engine/llm';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createPlacesProvider, PlacesCache } from '@engine/places';
 import type { PlacesProvider } from '@engine/places/types';
@@ -24,11 +26,31 @@ export interface EngineBuildResult {
 
 const resolver: HolidayResolver = holidayResolver;
 
-export function buildLLM(onUsage?: (u: LLMUsage) => void): { llm?: LLMService; warning?: string } {
+/**
+ * React Native's built-in fetch buffers whole responses, which makes streaming pointless; Expo's fetch
+ * (OkHttp / URLSession underneath) exposes the body as a stream so replies can be shown as they arrive.
+ */
+let streamingFetch: typeof fetch | null | undefined;
+function nativeStreamingFetch(): typeof fetch | undefined {
+  if (Platform.OS === 'web') return undefined;
+  if (streamingFetch !== undefined) return streamingFetch ?? undefined;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('expo/fetch') as { fetch?: typeof fetch };
+    streamingFetch = typeof mod.fetch === 'function' ? mod.fetch : null;
+  } catch {
+    streamingFetch = null;
+  }
+  return streamingFetch ?? undefined;
+}
+
+export function buildLLM(onUsage?: (u: LLMUsage) => void, onResponse?: (r: LLMResponseInfo) => void): { llm?: LLMService; warning?: string } {
   const s = useSettings.getState();
   try {
     const llm = createLLMService({
       apiKey: s.openRouterKey || undefined,
+      fetchImpl: nativeStreamingFetch(),
+      onResponse,
       models: s.modelOverrides,
       preset: s.modelPreset,
       imageModel: s.imageModel,
@@ -67,9 +89,9 @@ export function buildPlaces(center?: { lat: number; lng: number }): { places?: P
   }
 }
 
-export function buildEngine(state: WorldState, opts: { onUsage?: (u: LLMUsage) => void } = {}): EngineBuildResult {
+export function buildEngine(state: WorldState, opts: { onUsage?: (u: LLMUsage) => void; onResponse?: (r: LLMResponseInfo) => void } = {}): EngineBuildResult {
   const warnings: string[] = [];
-  const { llm, warning } = buildLLM(opts.onUsage);
+  const { llm, warning } = buildLLM(opts.onUsage, opts.onResponse);
   if (warning) warnings.push(warning);
   const engine = new Engine(state, {
     content: CONTENT,

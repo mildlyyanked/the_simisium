@@ -187,6 +187,17 @@ Outputs are parsed with zod schemas in `llm/schemas.ts` into `{ narration, dialo
 
 `llm/fallback.ts` — when there is no API key or the call fails, a deterministic rule-based adjudicator/dialogue generator keeps the game playable (used by tests).
 
+### 8d. Latency budget for conversation turns
+
+A turn the player waits on (`dialogue`, `adjudicate`, `narrate`) is treated differently from background work (`bio`, `director`, `summarize`):
+
+- **Streaming.** Interactive calls set `stream: true`; `readSse` parses the events from a byte stream (Expo's fetch on native, the browser's on web) or from a buffered body, and `partialReply` lifts the first dialogue line (or the narration) out of the half-written JSON so the busy overlay shows the reply as it is typed. The wire schema and the contract put `dialogue` first for that reason, and ask for minified JSON.
+- **Short leash.** 30 s idle timeout and at most one retry; the offline fallback answers instead of the player waiting minutes. Background tasks keep 45 s and three retries.
+- **Fast lane.** `provider.sort = "latency"` picks the provider answering fastest right now, and `reasoning` is switched off (or set to the minimum where a model cannot turn it off) so no seconds are spent thinking before the first word.
+- **Paid-for negotiation.** The client remembers which response format each model accepted (`formatMemo`) and which models reject the reasoning parameter, so a failed request shape costs one call per session, not one per turn.
+- **Bios never block.** `startConversation` prefetches the model-written biography in the background; `say` and `freeform` install the deterministic bio instantly when none has landed, and the model's version replaces it only if nothing from it has been revealed yet.
+- **Diagnostics.** Settings shows the last call's task, latency, served model and whether it streamed.
+
 ## 9. Places layer (Google Maps)
 
 `places/provider.ts`:

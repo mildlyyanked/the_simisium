@@ -10,7 +10,7 @@ import { Engine, type PerformResult } from '@engine/core/engine';
 import type { ActionAvailability } from '@engine/core/actions';
 import type { AvatarParams, Conversation, GeneratedDilemma, GooglePlaceData, SimId, VenueId, WorldState } from '@engine/core/types';
 import type { PlacePrediction, PlacesProvider } from '@engine/places/types';
-import type { LLMUsage } from '@engine/core/llmTypes';
+import type { LLMUsage, PartialReply } from '@engine/core/llmTypes';
 import { deserialize, saveSummary, serialize } from '@engine/core/save';
 import { generateWorld } from '@engine/gen/worldgen';
 import { buildEngine, buildLLM, buildPlaces } from './engineFactory';
@@ -45,6 +45,10 @@ export interface GameState {
   lastSaveId: string | null;
   busy: boolean;
   busyLabel: string;
+  /** the reply being streamed in right now */
+  busyPreview: PartialReply | null;
+  /** the most recent live model call, for the Settings diagnostics row */
+  lastLlm: { task: string; model: string; ms: number; ok: boolean; streamed: boolean; error?: string } | null;
   busySince: number;
   narrating: boolean;
   activeSimId: SimId | null;
@@ -146,6 +150,27 @@ async function pumpStory(get: () => GameState, set: (p: Partial<GameState>) => v
   }
 }
 
+/** Streams a reply into the busy overlay, at most a few times a second. */
+function previewSink(set: (p: Partial<GameState>) => void): (p: PartialReply) => void {
+  let last = 0;
+  let pending: PartialReply | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const flush = () => {
+    timer = null;
+    if (pending) {
+      set({ busyPreview: pending });
+      pending = null;
+      last = Date.now();
+    }
+  };
+  return (p) => {
+    pending = p;
+    const wait = 120 - (Date.now() - last);
+    if (wait <= 0) flush();
+    else if (!timer) timer = setTimeout(flush, wait);
+  };
+}
+
 const BUSY_LIMIT_MS = 90_000;
 let busyTimer: ReturnType<typeof setTimeout> | null = null;
 /** A model call that never resolves (app backgrounded mid-request, dead socket) must not freeze the game. */
@@ -198,6 +223,8 @@ export const useGame = create<GameState>((set, get) => ({
   lastSaveId: null,
   busy: false,
   busyLabel: '',
+  busyPreview: null,
+  lastLlm: null,
   busySince: 0,
   pendingConfirm: null,
   places: null,
@@ -256,7 +283,7 @@ export const useGame = create<GameState>((set, get) => ({
       }
       set({ genProgress: { message: 'Waking everyone up…', fraction: 0.97 } });
       get().unload();
-      const { engine, warnings } = buildEngine(state, { onUsage });
+      const { engine, warnings } = buildEngine(state, { onUsage, onResponse: (r) => set({ lastLlm: { task: r.task, model: r.servedModel ?? r.model, ms: r.ms, ok: r.ok, streamed: !!r.streamed, error: r.error } }) });
       for (const w of warnings) get().pushToast(w, 'warning');
       attachEngine(engine, set, get);
       set({ engine, places: placesRes.places, saveId: state.meta.saveId, activeSimId: state.player.activeSimId, openConversationId: null, followUps: [], recentActionIds: [], version: get().version + 1 });
@@ -286,7 +313,7 @@ export const useGame = create<GameState>((set, get) => ({
         const cur = get().llmUsage;
         set({ llmUsage: { calls: cur.calls + 1, costUsd: Math.round((cur.costUsd + u.costUsd) * 10000) / 10000, tokens: cur.tokens + u.tokensIn + u.tokensOut } });
       };
-      const { engine, warnings } = buildEngine(state, { onUsage });
+      const { engine, warnings } = buildEngine(state, { onUsage, onResponse: (r) => set({ lastLlm: { task: r.task, model: r.servedModel ?? r.model, ms: r.ms, ok: r.ok, streamed: !!r.streamed, error: r.error } }) });
       for (const w of warnings) get().pushToast(w, 'warning');
       attachEngine(engine, set, get);
       const openConv = Object.values(state.conversations).find((c) => c.active && c.participantIds.includes(state.player.activeSimId));
@@ -350,7 +377,7 @@ export const useGame = create<GameState>((set, get) => ({
       const cur = get().llmUsage;
       set({ llmUsage: { calls: cur.calls + 1, costUsd: Math.round((cur.costUsd + u.costUsd) * 10000) / 10000, tokens: cur.tokens + u.tokensIn + u.tokensOut } });
     };
-    const { engine, warnings } = buildEngine(old.state, { onUsage });
+    const { engine, warnings } = buildEngine(old.state, { onUsage, onResponse: (r) => set({ lastLlm: { task: r.task, model: r.servedModel ?? r.model, ms: r.ms, ok: r.ok, streamed: !!r.streamed, error: r.error } }) });
     for (const w of warnings) get().pushToast(w, 'warning');
     attachEngine(engine, set, get);
     set({ engine, places: buildPlaces(old.state.region.center).places ?? null, version: get().version + 1 });
@@ -456,7 +483,7 @@ export const useGame = create<GameState>((set, get) => ({
     armBusyWatchdog(set, get);
     haptic.light();
     try {
-      const res = await engine.freeform(simId, t);
+      const res = await engine.freeform(simId, t, { onPartial: previewSink(set) });
       void pumpStory(get, set);
       if (!res.ok) {
         get().pushToast(res.reason ?? 'Nothing happens.', 'warning');
@@ -472,7 +499,7 @@ export const useGame = create<GameState>((set, get) => ({
     } catch (err) {
       get().pushToast(`The world stalled: ${(err as Error).message}`, 'error');
     } finally {
-      set({ busy: false, busyLabel: '' });
+      set({ busy: false, busyLabel: '', busyPreview: null });
     }
   },
 
@@ -489,7 +516,7 @@ export const useGame = create<GameState>((set, get) => ({
     armBusyWatchdog(set, get);
     haptic.light();
     try {
-      const res = await engine.say(simId, conversationId, t);
+      const res = await engine.say(simId, conversationId, t, { onPartial: previewSink(set) });
       void pumpStory(get, set);
       if (!res.ok) {
         get().pushToast(res.reason ?? 'The conversation stalled.', 'warning');
@@ -503,7 +530,7 @@ export const useGame = create<GameState>((set, get) => ({
     } catch (err) {
       get().pushToast(`The conversation stalled: ${(err as Error).message}`, 'error');
     } finally {
-      set({ busy: false, busyLabel: '' });
+      set({ busy: false, busyLabel: '', busyPreview: null });
     }
   },
 

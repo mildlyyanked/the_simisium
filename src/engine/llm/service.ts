@@ -5,7 +5,7 @@
  */
 import type { ContentCatalog } from '../content/types';
 import type { HolidayResolver } from '../core/clock';
-import type { InteractionOutcome, LLMService, LLMTask, LLMUsage, SceneSnapshot } from '../core/llmTypes';
+import type { InteractionOutcome, LLMService, LLMTask, LLMUsage, PartialReply, SceneSnapshot } from '../core/llmTypes';
 import { RNG } from '../core/rng';
 import type { ActionDef, BioFact, Conversation, EffectBundle, GeneratedDilemma, Sim, SimId, Venue, WorldState } from '../core/types';
 import { hashKey, OpenRouterClient, type ChatMessage, type LLMConfig } from './client';
@@ -20,7 +20,7 @@ import * as npcMessagePrompt from './prompts/npcMessage';
 import { portraitPrompt } from './prompts/portrait';
 import * as dilemmaPrompt from './prompts/dilemma';
 import * as summarizePrompt from './prompts/summarize';
-import { BioSchema, DilemmaSchema, DilemmaWireSchema, DirectorSchema, InteractionOutcomeSchema, InteractionOutcomeWireSchema, NpcMessageSchema, normalizeOutcomeShape, toJsonSchema, type InteractionOutcomeOut } from './schemas';
+import { BioSchema, DilemmaSchema, DilemmaWireSchema, DirectorSchema, InteractionOutcomeSchema, InteractionOutcomeWireSchema, NpcMessageSchema, normalizeOutcomeShape, partialReply, toJsonSchema, type InteractionOutcomeOut } from './schemas';
 
 export interface OpenRouterServiceOptions extends LLMConfig {
   content: ContentCatalog;
@@ -81,24 +81,38 @@ export class OpenRouterLLMService implements LLMService {
   }
 
   // ---------------------------------------------------------------------
-  async converse(scene: SceneSnapshot, targetId: SimId, playerText: string, opts: { channel?: Conversation['channel'] } = {}): Promise<InteractionOutcome> {
+  /** Stream the reply to the player as it is written, one growing line at a time. */
+  private previewer(onPartial?: (p: PartialReply) => void): ((textSoFar: string) => void) | undefined {
+    if (!onPartial) return undefined;
+    let last = '';
+    return (textSoFar: string) => {
+      const p = partialReply(textSoFar);
+      const key = p ? `${p.kind}:${p.speakerId ?? ''}:${p.text}` : '';
+      if (key === last) return;
+      last = key;
+      if (p) onPartial(p);
+    };
+  }
+
+  async converse(scene: SceneSnapshot, targetId: SimId, playerText: string, opts: { channel?: Conversation['channel']; onPartial?: (p: PartialReply) => void } = {}): Promise<InteractionOutcome> {
     try {
       const ctx = buildSceneContext(scene, { content: this.content, primaryId: targetId, channel: opts.channel, holidayResolver: this.holidayResolver, allowMoveTo: false });
       const messages: ChatMessage[] = [
         { role: 'system', content: dialoguePrompt.system(ctx) },
         { role: 'user', content: dialoguePrompt.user(ctx, playerText) },
       ];
-      let res = await this.client.complete('dialogue', messages, { schema: OUTCOME_SCHEMA });
+      const started = Date.now();
+      let res = await this.client.complete('dialogue', messages, { schema: OUTCOME_SCHEMA, onDelta: this.previewer(opts.onPartial) });
       let parsed = InteractionOutcomeSchema.safeParse(normalizeOutcomeShape(res.json));
       if (!parsed.success) throw new Error(`dialogue: response did not match schema (${parsed.error.issues[0]?.message ?? 'unknown'})`);
       let outcome = coerceOutcome(parsed.data, scene, ctx, targetId, 'dialogue');
       this.report(res.usage);
       const target = scene.state.sims[targetId];
       const answered = outcome.dialogue.some((d) => d.speakerId === targetId);
-      if (!answered && !outcome.endsConversation && target) {
-        // one corrective pass: the addressed NPC has to speak (or the model must say why not)
+      if (!answered && !outcome.endsConversation && target && Date.now() - started < 20_000) {
+        // one corrective pass (only while the turn is still quick): the addressed NPC has to speak, or the model must say why not
         const retry: ChatMessage[] = [...messages, { role: 'assistant', content: res.text.slice(0, 4000) }, { role: 'user', content: `That response had no line from ${target.identity.firstName} (speakerId "${targetId}"). Rewrite the same turn so ${target.identity.firstName} actually answers ${ctx.conversation?.channel === 'text' ? 'by text' : 'out loud'} in "dialogue" (short is fine), or, if they truly cannot respond right now, say exactly why in one sentence of narration. JSON only.` }];
-        const res2 = await this.client.complete('dialogue', retry, { schema: OUTCOME_SCHEMA });
+        const res2 = await this.client.complete('dialogue', retry, { schema: OUTCOME_SCHEMA, maxTokens: 700, onDelta: this.previewer(opts.onPartial) });
         const parsed2 = InteractionOutcomeSchema.safeParse(normalizeOutcomeShape(res2.json));
         if (parsed2.success) {
           const o2 = coerceOutcome(parsed2.data, scene, ctx, targetId, 'dialogue');
@@ -119,14 +133,14 @@ export class OpenRouterLLMService implements LLMService {
     }
   }
 
-  async adjudicate(scene: SceneSnapshot, text: string, opts: { action?: ActionDef } = {}): Promise<InteractionOutcome> {
+  async adjudicate(scene: SceneSnapshot, text: string, opts: { action?: ActionDef; onPartial?: (p: PartialReply) => void } = {}): Promise<InteractionOutcome> {
     try {
       const ctx = buildSceneContext(scene, { content: this.content, holidayResolver: this.holidayResolver, allowMoveTo: true });
       const messages: ChatMessage[] = [
         { role: 'system', content: adjudicatePrompt.system(ctx) },
         { role: 'user', content: adjudicatePrompt.user(ctx, text, opts.action) },
       ];
-      const res = await this.client.complete('adjudicate', messages, { schema: OUTCOME_SCHEMA });
+      const res = await this.client.complete('adjudicate', messages, { schema: OUTCOME_SCHEMA, onDelta: this.previewer(opts.onPartial) });
       const parsed = InteractionOutcomeSchema.safeParse(normalizeOutcomeShape(res.json));
       if (!parsed.success) throw new Error(`adjudicate: response did not match schema (${parsed.error.issues[0]?.message ?? 'unknown'})`);
       const outcome = coerceOutcome(parsed.data, scene, ctx, undefined, 'adjudicate');

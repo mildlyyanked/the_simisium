@@ -14,7 +14,8 @@ import { quickActions, resolveIntent, type QuickAction } from './intents';
 import { staffOpinion } from '../systems/social';
 import { installGeneratedDilemma, installTemplateDilemma } from '../systems/story';
 import { addVenueFromPlace } from '../gen/worldgen';
-import type { InteractionOutcome, LLMService, SceneSnapshot } from './llmTypes';
+import { generateBioFallback } from '../llm/bioFallback';
+import type { InteractionOutcome, LLMService, PartialReply, SceneSnapshot } from './llmTypes';
 import { makeQuery, simName } from './query';
 import { RNG } from './rng';
 import type { ActionResult, System, SystemContext, WorldQuery } from './systems';
@@ -62,6 +63,7 @@ export class Engine {
   /** actions cache per sim per minute */
   private actionsCache: { minute: number; simId: SimId; list: ActionAvailability[] } | null = null;
   private stopRequested = false;
+  private bioInflight = new Set<SimId>();
 
   constructor(state: WorldState, opts: EngineOptions) {
     this.state = state;
@@ -526,6 +528,8 @@ export class Engine {
     const conv: Conversation = { id: newConversationId(this.rng), participantIds: [simId, ...otherIds], venueId: actor.location.venueId, startedAt: this.now, lastTurnAt: this.now, turns: [], channel, active: true, topic };
     this.state.conversations[conv.id] = conv;
     this.state.stats.conversations += 1;
+    // the model writes the other person's biography while the player types their first line
+    if (this.state.player.controlledSimIds.includes(simId)) for (const o of otherIds) this.prefetchBio(o);
     for (const o of otherIds) {
       const other = this.state.sims[o];
       if (!other) continue;
@@ -618,6 +622,8 @@ export class Engine {
     const sim = this.state.sims[simId];
     if (!sim || sim.bio.generated || !this.llm) return;
     const res = await this.llm.generateBio(this.state, sim);
+    // a quick bio may have been installed meanwhile; keep it once any of it has been said out loud
+    if (sim.bio.generated && sim.bio.facts.some((f) => f.revealedTo.length)) return;
     sim.bio.summary = res.summary;
     sim.bio.facts = res.facts;
     sim.bio.generated = true;
@@ -626,11 +632,33 @@ export class Engine {
     this.notify();
   }
 
-  async say(simId: SimId, conversationId: string, text: string): Promise<PerformResult> {
+  /** Start the model-written bio in the background; nothing waits on it and failures are swallowed. */
+  prefetchBio(simId: SimId): void {
+    const sim = this.state.sims[simId];
+    if (!sim || sim.bio.generated || !this.llm?.isLive() || this.bioInflight.has(simId)) return;
+    this.bioInflight.add(simId);
+    this.ensureBio(simId)
+      .catch(() => undefined)
+      .finally(() => this.bioInflight.delete(simId));
+  }
+
+  /** A conversation cannot wait for the model's bio: give the sim the deterministic one now if none has landed. */
+  private quickBio(simId: SimId): void {
+    const sim = this.state.sims[simId];
+    if (!sim || sim.bio.generated) return;
+    const fb = generateBioFallback(this.state, sim, this.content);
+    sim.bio.summary = fb.summary;
+    sim.bio.facts = fb.facts;
+    sim.bio.generated = true;
+    sim.bio.generatedBy = 'fallback';
+    this.bus.emit({ type: 'bio:generated', simId, by: 'fallback' });
+  }
+
+  async say(simId: SimId, conversationId: string, text: string, opts: { onPartial?: (p: PartialReply) => void } = {}): Promise<PerformResult> {
     const conv = this.state.conversations[conversationId as import('./types').ConversationId];
     if (!conv || !conv.active) return { ok: false, reason: 'No active conversation', minutes: 0 };
     const targets = conv.participantIds.filter((p) => p !== simId);
-    for (const t of targets) await this.ensureBio(t);
+    for (const t of targets) this.quickBio(t);
     const scene = this.scene(simId, conversationId);
     conv.turns.push({ speakerId: simId, text, at: this.now });
     if (conv.channel === 'text') for (const t of targets) this.mirrorText(simId, t, text);
@@ -639,7 +667,7 @@ export class Engine {
     if (!this.llm) return { ok: false, reason: 'LLM not configured', minutes: 0 };
     let outcome: InteractionOutcome;
     try {
-      outcome = await this.llm.converse(scene, targets[0], text, { channel: conv.channel });
+      outcome = await this.llm.converse(scene, targets[0], text, { channel: conv.channel, onPartial: opts.onPartial });
     } catch (err) {
       this.bus.emit({ type: 'llm:error', task: 'dialogue', error: (err as Error).message });
       return { ok: false, reason: `The conversation stalled (${(err as Error).message})`, minutes: 0 };
@@ -647,7 +675,7 @@ export class Engine {
     return this.applyOutcome(simId, outcome, conv, 'conversation');
   }
 
-  async freeform(simId: SimId, text: string): Promise<PerformResult> {
+  async freeform(simId: SimId, text: string, opts: { onPartial?: (p: PartialReply) => void } = {}): Promise<PerformResult> {
     const sim = this.state.sims[simId];
     if (!sim) return { ok: false, reason: 'Unknown sim', minutes: 0 };
     if (!this.llm) return { ok: false, reason: 'LLM not configured', minutes: 0 };
@@ -674,12 +702,12 @@ export class Engine {
       this.log({ text: r.reason ?? 'That didn’t work.', kind: 'narrative', simId, venueId: sim.location.venueId, importance: 1 });
       return r;
     }
-    for (const p of presentNow) if (!p.bio.generated && sim.relationships[p.id]) await this.ensureBio(p.id);
+    for (const p of presentNow) if (!p.bio.generated && sim.relationships[p.id]) this.quickBio(p.id);
     const scene = this.scene(simId);
     this.log({ text: `You try: ${text}`, kind: 'narrative', simId, venueId: sim.location.venueId, importance: 1 });
     let outcome: InteractionOutcome;
     try {
-      outcome = await this.llm.adjudicate(scene, text);
+      outcome = await this.llm.adjudicate(scene, text, { onPartial: opts.onPartial });
     } catch (err) {
       this.bus.emit({ type: 'llm:error', task: 'adjudicate', error: (err as Error).message });
       return { ok: false, reason: `Nothing happens (${(err as Error).message})`, minutes: 0 };

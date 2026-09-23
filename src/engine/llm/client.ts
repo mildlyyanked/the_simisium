@@ -20,6 +20,8 @@ export interface LLMRequestInfo {
   messageCount: number;
   promptChars: number;
   cached: boolean;
+  /** the reply was streamed token by token */
+  streamed?: boolean;
 }
 
 export interface LLMResponseInfo extends LLMRequestInfo {
@@ -43,9 +45,9 @@ export interface LLMConfig {
   fallbacks?: string[];
   /** image-capable model for portraits (default google/gemini-2.5-flash-image) */
   imageModel?: string;
-  /** per-request timeout, default 45 000 ms */
+  /** per-request timeout (idle timeout while streaming); default 30 s for conversation turns, 45 s otherwise */
   timeoutMs?: number;
-  /** retries on 429/5xx/network, default 3 */
+  /** retries on 429/5xx/network, default 3 (capped at 1 for conversation turns, which fall back instead of waiting) */
   maxRetries?: number;
   /** base backoff in ms (doubles each retry), default 500; set 0 in tests */
   retryBaseMs?: number;
@@ -70,6 +72,8 @@ export interface CompleteOptions {
   /** use the LRU cache (deterministic tasks only) */
   cache?: boolean;
   signal?: AbortSignal;
+  /** receive the text so far as it streams in (turns on SSE streaming for this call) */
+  onDelta?: (textSoFar: string) => void;
 }
 
 export interface CompleteResult {
@@ -115,6 +119,24 @@ interface OpenRouterCompletion {
 }
 
 const DEFAULT_BASE = 'https://openrouter.ai/api/v1';
+/** Tasks the player waits on: they get a short leash and a fast lane. */
+const INTERACTIVE: ReadonlySet<LLMTask> = new Set<LLMTask>(['dialogue', 'adjudicate', 'narrate']);
+export const INTERACTIVE_TIMEOUT_MS = 30_000;
+export const BACKGROUND_TIMEOUT_MS = 45_000;
+
+/**
+ * Reasoning models spend seconds thinking before the first word; for a conversation turn that is wasted
+ * time. Interactive tasks ask for no reasoning where it can be switched off, and the minimum where it
+ * cannot. Background tasks (bios, dilemmas) keep the model's default.
+ */
+export function reasoningFor(model: string, task: LLMTask): Record<string, unknown> | undefined {
+  if (!INTERACTIVE.has(task)) return undefined;
+  const m = model.toLowerCase();
+  if (m.includes(':thinking') || m.includes('reasoning') || m.includes('deepseek-r1')) return undefined;
+  if (/openai\/(gpt-5|o[1-9])/.test(m)) return { effort: 'minimal' };
+  if (/gemini-2\.5-pro|gemini-3/.test(m)) return { effort: 'low' };
+  return { enabled: false };
+}
 const JSON_ONLY_HINT = '\n\nReturn ONLY a single JSON object matching the requested shape. No prose, no markdown fences.';
 
 /** Small non-cryptographic 64-bit-ish hash (two FNV-1a lanes) for cache keys. */
@@ -165,6 +187,10 @@ export class OpenRouterClient {
   private spent = 0;
   private calls = 0;
   private sleepImpl: (ms: number) => Promise<void>;
+  /** which response format a model accepted, so negotiation is paid for once per session, not per turn */
+  private formatMemo = new Map<string, number>();
+  /** models that rejected the reasoning parameter */
+  private noReasoning = new Set<string>();
 
   constructor(config: LLMConfig, deps: { fetchImpl?: typeof fetch; sleep?: (ms: number) => Promise<void> } = {}) {
     this.config = config;
@@ -239,17 +265,23 @@ export class OpenRouterClient {
       : [undefined];
 
     let lastErr: unknown;
-    for (let fi = 0; fi < formats.length; fi++) {
+    let fi = Math.min(this.formatMemo.get(model) ?? 0, formats.length - 1);
+    while (fi < formats.length) {
       const fmt = formats[fi];
       const msgs = opts.schema && fmt === undefined ? withJsonHint(messages) : messages;
+      const reasoning = this.noReasoning.has(model) ? undefined : reasoningFor(model, task);
+      opts.onDelta?.('');
       try {
-        const res = await this.request(task, model, msgs, fmt, temperature, maxTokens, opts.signal);
+        const res = await this.request(task, model, msgs, fmt, temperature, maxTokens, { signal: opts.signal, onDelta: opts.onDelta, reasoning });
         if (opts.schema) {
           const json = extractJson(res.text);
           if (json === undefined) {
             // structured output requested but nothing parseable came back: try the next format, once
             lastErr = new Error(`Model returned non-JSON for ${task} (${res.finishReason ?? 'no finish reason'}, ${res.text.length} chars${res.text ? `: "${snippet(res.text).slice(0, 100)}"` : ''})`);
-            if (fi < formats.length - 1) continue;
+            if (fi < formats.length - 1) {
+              fi++;
+              continue;
+            }
             throw lastErr;
           }
           res.json = json;
@@ -257,31 +289,64 @@ export class OpenRouterClient {
           const maybe = res.text.trim().startsWith('{') ? extractJson(res.text) : undefined;
           if (maybe !== undefined) res.json = maybe;
         }
+        this.formatMemo.set(model, fi);
         if (key) this.cache.set(key, res);
         return res;
       } catch (err) {
         lastErr = err;
-        // A 400 means the provider rejected the request shape (usually response_format) → degrade format.
-        if (err instanceof LLMHttpError && (err.status === 400 || err.status === 404 || err.status === 422) && fi < formats.length - 1) continue;
-        if (err instanceof Error && err.message.startsWith('Model returned non-JSON') && fi < formats.length - 1) continue;
+        // A 400/404/422 means the provider rejected the request shape: the reasoning switch or the response_format.
+        if (err instanceof LLMHttpError && (err.status === 400 || err.status === 404 || err.status === 422)) {
+          const aboutFormat = /response_format|json_schema|structured|schema/i.test(err.body ?? err.message);
+          if (reasoning && !aboutFormat) {
+            this.noReasoning.add(model);
+            continue; // same format, without the reasoning parameter
+          }
+          if (fi < formats.length - 1) {
+            fi++;
+            continue;
+          }
+          if (reasoning) {
+            this.noReasoning.add(model);
+            continue;
+          }
+        }
         throw err;
       }
     }
     throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
   }
 
-  /** Single request with retries on 429/5xx/network/timeout. */
-  private async request(task: LLMTask, model: string, messages: ChatMessage[], fmt: ResponseFormat, temperature: number, maxTokens: number, outerSignal?: AbortSignal): Promise<CompleteResult> {
-    const maxRetries = this.config.maxRetries ?? 3;
+  timeoutFor(task: LLMTask): number {
+    return this.config.timeoutMs ?? (INTERACTIVE.has(task) ? INTERACTIVE_TIMEOUT_MS : BACKGROUND_TIMEOUT_MS);
+  }
+
+  retriesFor(task: LLMTask): number {
+    const cfg = this.config.maxRetries ?? 3;
+    return INTERACTIVE.has(task) ? Math.min(cfg, 1) : cfg;
+  }
+
+  /** Single request with retries on 429/5xx/network/timeout. Streams when `onDelta` is given. */
+  private async request(task: LLMTask, model: string, messages: ChatMessage[], fmt: ResponseFormat, temperature: number, maxTokens: number, extra: { signal?: AbortSignal; onDelta?: (t: string) => void; reasoning?: Record<string, unknown> } = {}): Promise<CompleteResult> {
+    const maxRetries = this.retriesFor(task);
+    const timeoutMs = this.timeoutFor(task);
     const base = this.config.retryBaseMs ?? 500;
+    const interactive = INTERACTIVE.has(task);
+    const streamed = !!extra.onDelta;
+    const outerSignal = extra.signal;
     const fmtLabel: LLMRequestInfo['responseFormat'] = fmt ? fmt.type : 'none';
     const body: Record<string, unknown> = { model, messages, temperature, max_tokens: maxTokens, usage: { include: true } };
     if (this.config.fallbacks?.length) body.models = [model, ...this.config.fallbacks.filter((m) => m !== model)];
+    const provider: Record<string, unknown> = {};
     if (fmt) {
       body.response_format = fmt;
-      body.provider = { require_parameters: true };
+      provider.require_parameters = true;
     }
-    const info: LLMRequestInfo = { task, model, attempt: 0, responseFormat: fmtLabel, messageCount: messages.length, promptChars: promptChars(messages), cached: false };
+    // the player is waiting: route to the provider answering fastest right now
+    if (interactive) provider.sort = 'latency';
+    if (Object.keys(provider).length) body.provider = provider;
+    if (extra.reasoning) body.reasoning = extra.reasoning;
+    if (streamed) body.stream = true;
+    const info: LLMRequestInfo = { task, model, attempt: 0, responseFormat: fmtLabel, messageCount: messages.length, promptChars: promptChars(messages), cached: false, streamed };
 
     let lastErr: unknown;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -289,7 +354,13 @@ export class OpenRouterClient {
       this.config.onRequest?.({ ...info });
       const started = nowMs();
       const ctrl = new AbortController();
-      const timeout = setTimeout(() => ctrl.abort(), this.config.timeoutMs ?? 45_000);
+      // idle timeout: while a reply streams, every chunk buys more time; a hard cap keeps a runaway stream bounded
+      let timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      const hardCap = setTimeout(() => ctrl.abort(), timeoutMs * 4);
+      const touch = () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      };
       const onOuterAbort = () => ctrl.abort();
       outerSignal?.addEventListener('abort', onOuterAbort);
       let status = 0;
@@ -301,8 +372,8 @@ export class OpenRouterClient {
           signal: ctrl.signal,
         });
         status = resp.status;
-        const raw = await resp.text();
         if (!resp.ok) {
+          const raw = await resp.text();
           const err = new LLMHttpError(status, `OpenRouter ${status}: ${snippet(raw)}`, raw);
           if (retryable(status) && attempt < maxRetries) {
             lastErr = err;
@@ -314,21 +385,33 @@ export class OpenRouterClient {
           throw err;
         }
         let data: OpenRouterCompletion;
-        try {
-          data = JSON.parse(raw) as OpenRouterCompletion;
-        } catch {
-          // keep-alive comment lines, a stray prefix, or a truncated body: salvage the first object, else retry
-          const salvaged = salvageEnvelope(raw);
-          if (salvaged) data = salvaged;
-          else {
-            const err = new LLMHttpError(status, `OpenRouter returned invalid JSON envelope (${raw.length} chars: ${snippet(raw).slice(0, 80) || 'empty body'})`, raw);
-            if (attempt < maxRetries) {
-              lastErr = err;
-              this.config.onResponse?.({ ...info, ok: false, status, ms: nowMs() - started, error: err.message });
-              await this.backoff(base, attempt);
-              continue;
+        let raw = '';
+        if (streamed) {
+          const acc = await readSse(resp, touch, extra.onDelta);
+          raw = acc.raw;
+          data = acc.error
+            ? { error: acc.error }
+            : acc.text || acc.finishReason || acc.usage
+              ? { model: acc.model, choices: [{ message: { content: acc.text }, finish_reason: acc.finishReason }], usage: acc.usage }
+              : (salvageEnvelope(raw) ?? { choices: [] });
+        } else {
+          raw = await resp.text();
+          try {
+            data = JSON.parse(raw) as OpenRouterCompletion;
+          } catch {
+            // keep-alive comment lines, a stray prefix, or a truncated body: salvage the first object, else retry
+            const salvaged = salvageEnvelope(raw);
+            if (salvaged) data = salvaged;
+            else {
+              const err = new LLMHttpError(status, `OpenRouter returned invalid JSON envelope (${raw.length} chars: ${snippet(raw).slice(0, 80) || 'empty body'})`, raw);
+              if (attempt < maxRetries) {
+                lastErr = err;
+                this.config.onResponse?.({ ...info, ok: false, status, ms: nowMs() - started, error: err.message });
+                await this.backoff(base, attempt);
+                continue;
+              }
+              throw err;
             }
-            throw err;
           }
         }
         if (data.error) {
@@ -358,7 +441,7 @@ export class OpenRouterClient {
         if (err instanceof LLMHttpError) throw err;
         // network / abort
         const aborted = (err as Error)?.name === 'AbortError' || ctrl.signal.aborted;
-        const e = new Error(aborted ? (outerSignal?.aborted ? 'LLM request cancelled' : `LLM request timed out after ${this.config.timeoutMs ?? 45_000} ms`) : `LLM network error: ${(err as Error)?.message ?? String(err)}`);
+        const e = new Error(aborted ? (outerSignal?.aborted ? 'LLM request cancelled' : `LLM request timed out after ${timeoutMs} ms`) : `LLM network error: ${(err as Error)?.message ?? String(err)}`);
         this.config.onResponse?.({ ...info, ok: false, status: 0, ms: nowMs() - started, error: e.message });
         if (outerSignal?.aborted) throw e;
         lastErr = e;
@@ -368,7 +451,8 @@ export class OpenRouterClient {
         }
         throw e;
       } finally {
-        clearTimeout(timeout);
+        clearTimeout(timer);
+        clearTimeout(hardCap);
         outerSignal?.removeEventListener('abort', onOuterAbort);
       }
     }
@@ -457,6 +541,104 @@ export class OpenRouterClient {
 }
 
 // ---------------------------------------------------------------------------
+interface SseAccumulator {
+  raw: string;
+  text: string;
+  model?: string;
+  finishReason?: string;
+  usage?: OpenRouterCompletion['usage'];
+  error?: { message?: string; code?: number };
+}
+
+/**
+ * Read a streamed chat completion (server-sent events). Works on a real byte stream (`body.getReader`)
+ * and on a runtime whose fetch buffers the whole body (then the SSE text is parsed in one go).
+ */
+export async function readSse(resp: Response, onChunk: () => void, onDelta?: (textSoFar: string) => void): Promise<SseAccumulator> {
+  const out: SseAccumulator = { raw: '', text: '' };
+  let buffer = '';
+  const handleLine = (line: string) => {
+    const l = line.replace(/\r$/, '');
+    if (!l || l.startsWith(':')) return;
+    if (!l.startsWith('data:')) return;
+    const payload = l.slice(5).trim();
+    if (!payload || payload === '[DONE]') return;
+    let chunk: { model?: string; choices?: { delta?: { content?: string | null }; message?: { content?: string }; finish_reason?: string | null }[]; usage?: OpenRouterCompletion['usage']; error?: { message?: string; code?: number } };
+    try {
+      chunk = JSON.parse(payload);
+    } catch {
+      return;
+    }
+    if (chunk.error) out.error = chunk.error;
+    if (chunk.model) out.model = chunk.model;
+    const choice = chunk.choices?.[0];
+    const delta = choice?.delta?.content ?? (typeof choice?.message?.content === 'string' ? choice.message.content : undefined);
+    if (typeof delta === 'string' && delta) {
+      out.text += delta;
+      onDelta?.(out.text);
+    }
+    if (choice?.finish_reason) out.finishReason = choice.finish_reason;
+    if (chunk.usage) out.usage = chunk.usage;
+  };
+  const feed = (piece: string) => {
+    out.raw += piece;
+    buffer += piece;
+    let nl = buffer.indexOf('\n');
+    while (nl >= 0) {
+      handleLine(buffer.slice(0, nl));
+      buffer = buffer.slice(nl + 1);
+      nl = buffer.indexOf('\n');
+    }
+  };
+  const body = (resp as { body?: { getReader?: () => { read(): Promise<{ done: boolean; value?: Uint8Array }> } } | null }).body;
+  if (body && typeof body.getReader === 'function') {
+    const reader = body.getReader();
+    const decoder = utf8Decoder();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      onChunk();
+      if (value) feed(decoder.decode(value, { stream: true }));
+    }
+    feed(decoder.decode());
+  } else {
+    feed(await resp.text());
+  }
+  if (buffer) handleLine(buffer);
+  return out;
+}
+
+/** TextDecoder where the runtime has one; otherwise a small streaming UTF-8 decoder. */
+function utf8Decoder(): { decode(input?: Uint8Array, opts?: { stream?: boolean }): string } {
+  if (typeof TextDecoder !== 'undefined') return new TextDecoder();
+  let pending: number[] = [];
+  return {
+    decode(input?: Uint8Array, opts?: { stream?: boolean }): string {
+      const bytes = [...pending, ...(input ?? [])];
+      pending = [];
+      let out = '';
+      let i = 0;
+      while (i < bytes.length) {
+        const b = bytes[i];
+        const need = b < 0x80 ? 1 : b >> 5 === 0b110 ? 2 : b >> 4 === 0b1110 ? 3 : b >> 3 === 0b11110 ? 4 : 1;
+        if (i + need > bytes.length) {
+          if (opts?.stream) {
+            pending = bytes.slice(i);
+            break;
+          }
+          out += '\ufffd';
+          break;
+        }
+        let cp = need === 1 ? b : need === 2 ? b & 0x1f : need === 3 ? b & 0x0f : b & 0x07;
+        for (let k = 1; k < need; k++) cp = (cp << 6) | (bytes[i + k] & 0x3f);
+        out += String.fromCodePoint(cp);
+        i += need;
+      }
+      return out;
+    },
+  };
+}
+
 function promptChars(messages: ChatMessage[]): number {
   return messages.reduce((s, m) => s + m.content.length, 0);
 }

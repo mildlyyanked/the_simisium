@@ -16,8 +16,8 @@ Principles:
 
 export const OUTCOME_CONTRACT = `Return ONE JSON object with exactly this shape (omit fields you don't need; never add others):
 {
-  "narration": string,                      // 1–3 sentences of scene action in second person; "" if nothing beyond the dialogue happens
   "dialogue": [{ "speakerId": string, "text": string, "emotion": string }],   // speakerId must be a sim id from the scene (or "narrator" for ambient lines); emotion from the emotion list
+  "narration": string,                      // 1–3 sentences of scene action in second person; "" if nothing beyond the dialogue happens
   "effects": EffectBundle,                  // for the PLAYER only
   "otherEffects": { "<npcId>": EffectBundle },   // for NPCs present: how THEY are changed (most importantly their feelings about the player)
   "revealedFacts": [{ "simId": string, "factIds": [string] }],   // ONLY ids from the bio-fact list, ONLY when the NPC actually conveyed that fact's substance now
@@ -43,4 +43,5 @@ EffectBundle (all optional, all deltas):
   "timeElapsedMinutes": number,
   "memories": [{ "kind": "interaction"|"event"|"promise"|"conflict"|"milestone", "text": string }]
 }
+Write the "dialogue" array before the other fields, and output minified JSON (no indentation or line breaks between fields).
 Relationship semantics: "effects.relationships" is how the PLAYER's feelings toward the NPC shift (mutual must be false). "otherEffects[npcId].relationships[{ simId: <playerId> }]" is how the NPC's feelings toward the player shift; this is the one that matters most. Typical magnitudes per exchange: ±1–4 for ordinary talk, ±5–10 for something meaningful, ±10–20 only for a real turning point (a betrayal, a rescue, a confession). familiarity +1..+4 per genuine exchange. Small talk with a busy stranger is ±0–2.`;

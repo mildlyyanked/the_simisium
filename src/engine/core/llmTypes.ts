@@ -6,6 +6,13 @@ import type { ActionDef, BioFact, Conversation, EffectBundle, Sim, SimId, Venue,
 
 export type LLMTask = 'dialogue' | 'adjudicate' | 'bio' | 'narrate' | 'summarize' | 'director';
 
+/** A reply still being written: what the player sees while the model streams. */
+export interface PartialReply {
+  kind: 'dialogue' | 'narration';
+  speakerId?: string;
+  text: string;
+}
+
 export interface LLMUsage {
   task: LLMTask;
   model: string;
@@ -59,9 +66,9 @@ export interface LLMService {
   /** most recent live-call failure (the fallback path was used), for diagnostics */
   lastError?: { task: LLMTask; message: string; at: number };
   /** A controlled sim says/does something in a conversation with NPCs. */
-  converse(scene: SceneSnapshot, targetId: SimId, playerText: string, opts?: { channel?: Conversation['channel'] }): Promise<InteractionOutcome>;
+  converse(scene: SceneSnapshot, targetId: SimId, playerText: string, opts?: { channel?: Conversation['channel']; onPartial?: (p: PartialReply) => void }): Promise<InteractionOutcome>;
   /** A controlled sim attempts a freeform action described in text. */
-  adjudicate(scene: SceneSnapshot, text: string, opts?: { action?: ActionDef }): Promise<InteractionOutcome>;
+  adjudicate(scene: SceneSnapshot, text: string, opts?: { action?: ActionDef; onPartial?: (p: PartialReply) => void }): Promise<InteractionOutcome>;
   /** Narrate a completed deterministic action (flavor only; no effects). */
   narrate(scene: SceneSnapshot, action: ActionDef, outcomeLabel?: string): Promise<string>;
   /** Generate an NPC's hidden biography. Deterministic given seed. */

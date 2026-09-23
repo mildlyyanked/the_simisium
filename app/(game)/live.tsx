@@ -30,6 +30,7 @@ export default function LiveScreen(): React.ReactElement {
   const conversation = useOpenConversation();
   const busy = useGame((s) => s.busy);
   const busyLabel = useGame((s) => s.busyLabel);
+  const busyPreview = useGame((s) => s.busyPreview);
   const followUps = useGame((s) => s.followUps);
   const recentIds = useGame((s) => s.recentActionIds);
   const perform = useGame((s) => s.perform);
@@ -225,7 +226,7 @@ export default function LiveScreen(): React.ReactElement {
         onFreeform={() => setSheet(false)}
       />
       <InterruptModal interrupt={interrupt} fromSim={interrupt?.fromSimId ? engine.state.sims[interrupt.fromSimId] : null} onResolve={(id, actionId, params) => resolveInterrupt(id, actionId, params)} />
-      <BusyOverlay visible={busy} label={busyLabel || 'The world is thinking…'} />
+      <BusyOverlay visible={busy} label={busyLabel || 'The world is thinking…'} preview={busyPreview ? { who: busyPreview.kind === 'dialogue' ? (busyPreview.speakerId ? engine.state.sims[busyPreview.speakerId as SimId]?.identity.firstName : undefined) : undefined, text: busyPreview.text } : null} />
     </Screen>
   );
 }
